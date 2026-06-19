@@ -17,6 +17,8 @@ model User {
   name          String?
   imageUrl      String?
   role          UserRole @default(CANDIDATE)
+  tier          SubscriptionTier @default(FREE)
+  stripeCustomerId String? @unique
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -29,6 +31,12 @@ model User {
 enum UserRole {
   CANDIDATE
   ADMIN
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  PRO_MAX
 }
 
 // ─── Resumes ───

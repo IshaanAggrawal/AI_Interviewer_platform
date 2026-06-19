@@ -25,6 +25,15 @@ export const createInterview = asyncHandler(async (req: Request, res: Response) 
 
   const localUser = await getOrCreateLocalUser(userId);
 
+  // Enforce tier limits
+  const interviewCount = await prisma.interview.count({ where: { userId: localUser.id } });
+  if (localUser.tier === "FREE" && interviewCount >= 2) {
+    throw new AppError(403, "LIMIT_REACHED_FREE");
+  }
+  if (localUser.tier === "PRO" && interviewCount >= 10) {
+    throw new AppError(403, "LIMIT_REACHED_PRO");
+  }
+
   const interview = await prisma.interview.create({
     data: {
       userId: localUser.id,

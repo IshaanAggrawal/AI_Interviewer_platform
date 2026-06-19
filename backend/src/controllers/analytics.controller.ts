@@ -110,10 +110,12 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
     success: true,
     data: {
       totalInterviews,
-      averageScore,
+      averageScore: isNaN(averageScore) ? 0 : averageScore,
       topSkill,
       scoreData,
       recentInterviews: interviews.slice(0, 5),
+      userTier: user.tier,
+      interviewsCount: totalInterviews,
     },
   });
 });

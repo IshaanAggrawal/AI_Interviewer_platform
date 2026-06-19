@@ -15,6 +15,7 @@ import interviewRoutes from "./routes/interview.routes";
 import resumeRoutes from "./routes/resume.routes";
 import aiRoutes from "./routes/ai.routes";
 import analyticsRoutes from "./routes/analytics.routes";
+import paymentRoutes from "./routes/payment.routes";
 
 const app = express();
 
@@ -50,6 +51,7 @@ app.use("/api/interviews", requireAuth(), interviewRoutes);
 app.use("/api/resumes", requireAuth(), resumeRoutes);
 app.use("/api/ai", requireAuth(), aiRoutes);
 app.use("/api/analytics", requireAuth(), analyticsRoutes);
+app.use("/api/payments", requireAuth(), paymentRoutes);
 
 // ─── Error Handling ───
 app.use(notFoundHandler);
