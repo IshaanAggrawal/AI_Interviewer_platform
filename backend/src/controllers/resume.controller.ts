@@ -93,3 +93,38 @@ export const listResumes = asyncHandler(async (req: Request, res: Response) => {
     data: resumes,
   });
 });
+
+/**
+ * DELETE /api/resumes/:id
+ * Deletes a resume.
+ */
+export const deleteResume = asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = getAuth(req);
+  if (!userId) {
+    throw new AppError(401, "Unauthorized");
+  }
+
+  const id = req.params.id as string;
+  const localUser = await getOrCreateLocalUser(userId);
+
+  const resume = await prisma.resume.findUnique({
+    where: { id },
+  });
+
+  if (!resume) {
+    throw new AppError(404, "Resume not found");
+  }
+
+  if (resume.userId !== localUser.id) {
+    throw new AppError(403, "Permission denied");
+  }
+
+  await prisma.resume.delete({
+    where: { id },
+  });
+
+  res.json({
+    success: true,
+    message: "Resume deleted successfully",
+  });
+});

@@ -15,4 +15,7 @@ router.get("/", resumeController.listResumes);
 // GET  /api/resumes/:id/download — Get a pre-signed download URL
 router.get("/:id/download", resumeController.getDownloadUrl);
 
+// DELETE /api/resumes/:id — Delete a resume
+router.delete("/:id", resumeController.deleteResume);
+
 export default router;

@@ -51,6 +51,17 @@ export default function ResumesPage() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this resume?")) return;
+    try {
+      await api.delete(`/resumes/${id}`);
+      await fetchResumes();
+    } catch (error) {
+      console.error("Delete failed", error);
+      alert("Failed to delete resume.");
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       <div>
@@ -144,7 +155,12 @@ export default function ResumesPage() {
                       </div>
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-red-400 hover:bg-red-400/10">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="text-muted-foreground hover:text-red-400 hover:bg-red-400/10"
+                    onClick={() => handleDelete(resume.id)}
+                  >
                     <Trash2 className="h-5 w-5" />
                   </Button>
                 </CardContent>

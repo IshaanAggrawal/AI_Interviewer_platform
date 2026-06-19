@@ -86,7 +86,7 @@ export default function DashboardLayout({
                appearance={{
                  elements: {
                    userButtonBox: "flex-row-reverse w-full justify-between gap-3",
-                   userButtonOuterIdentifier: "text-sm font-semibold text-white truncate",
+                   userButtonOuterIdentifier: "text-sm font-semibold !text-white truncate",
                    userButtonAvatarBox: "h-9 w-9 border border-white/10"
                  },
                }}

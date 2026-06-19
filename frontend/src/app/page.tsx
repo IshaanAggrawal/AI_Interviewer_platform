@@ -200,6 +200,7 @@ export default function LandingPage() {
                 src="/images/hero.png" 
                 alt="AI Interviewer 3D Illustration" 
                 fill 
+                sizes="(max-width: 768px) 100vw, 50vw"
                 className="object-cover"
                 priority
               />
@@ -262,6 +263,7 @@ export default function LandingPage() {
                     src="/images/analytics.png" 
                     alt="Analytics Dashboard" 
                     fill 
+                    sizes="(max-width: 768px) 100vw, 50vw"
                     className="object-cover border-l border-white/10"
                   />
                 </div>

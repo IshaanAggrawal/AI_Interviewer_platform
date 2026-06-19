@@ -47,3 +47,23 @@ export async function getPresignedDownloadUrl(key: string, expiresIn = 3600) {
   const url = await getSignedUrl(s3Client, command, { expiresIn });
   return { url, expiresIn };
 }
+
+/**
+ * Generates a pre-signed URL for uploading a file directly to S3 from the frontend.
+ * URL is valid for 1 hour by default.
+ */
+export async function getPresignedUploadUrl(key: string, contentType: string, expiresIn = 3600) {
+  const command = new PutObjectCommand({
+    Bucket: config.aws.s3Bucket,
+    Key: key,
+    ContentType: contentType,
+  });
+
+  const url = await getSignedUrl(s3Client, command, { expiresIn });
+  return { 
+    url, 
+    expiresIn,
+    key,
+    publicUrl: `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${key}`
+  };
+}

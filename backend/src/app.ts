@@ -3,11 +3,12 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import { rateLimit } from "express-rate-limit";
-import { clerkMiddleware, requireAuth } from "@clerk/express";
+import { clerkMiddleware } from "@clerk/express";
 
 import config from "./config";
 import { errorHandler } from "./middlewares/error-handler";
 import { notFoundHandler } from "./middlewares/not-found";
+import { requireAuth } from "./middlewares/require-auth";
 
 // ─── Route Imports ───
 import authRoutes from "./routes/auth.routes";
@@ -47,11 +48,11 @@ app.get("/health", (_req, res) => {
 app.use("/api/auth", authRoutes);
 
 // Protect all other routes
-app.use("/api/interviews", requireAuth(), interviewRoutes);
-app.use("/api/resumes", requireAuth(), resumeRoutes);
-app.use("/api/ai", requireAuth(), aiRoutes);
-app.use("/api/analytics", requireAuth(), analyticsRoutes);
-app.use("/api/payments", requireAuth(), paymentRoutes);
+app.use("/api/interviews", requireAuth, interviewRoutes);
+app.use("/api/resumes", requireAuth, resumeRoutes);
+app.use("/api/ai", requireAuth, aiRoutes);
+app.use("/api/analytics", requireAuth, analyticsRoutes);
+app.use("/api/payments", requireAuth, paymentRoutes);
 
 // ─── Error Handling ───
 app.use(notFoundHandler);

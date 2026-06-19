@@ -20,9 +20,9 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
 
   // Get all COMPLETED interviews for the user
   let interviews = await prisma.interview.findMany({
-    where: { 
+    where: {
       userId: user.id,
-      status: "COMPLETED" 
+      status: "COMPLETED"
     },
     include: {
       evaluation: {
@@ -34,39 +34,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
     orderBy: { createdAt: "desc" },
   });
 
-  if (interviews.length === 0) {
-    // INJECT ONE MOCK INTERVIEW
-    const mockInterview = await prisma.interview.create({
-      data: {
-        userId: user.id,
-        company: "Google",
-        role: "Senior Software Engineer",
-        experience: "5-7 years",
-        mode: "VOICE",
-        status: "COMPLETED",
-        overallScore: 88,
-        duration: 1240,
-        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-        evaluation: {
-          create: {
-            overallScore: 88,
-            strengths: ["Strong system design foundation", "Clear communication"],
-            weaknesses: ["Missed edge cases in video encoding"],
-            recommendation: "Focus on practicing database schema design.",
-            categories: {
-              create: [
-                { name: "System Design", score: 85 },
-                { name: "Communication", score: 92 },
-                { name: "Problem Solving", score: 88 },
-              ]
-            }
-          }
-        }
-      },
-      include: { evaluation: { include: { categories: true } } }
-    });
-    interviews = [mockInterview];
-  }
+  // Do not inject mock interviews anymore
 
   const totalInterviews = interviews.length;
   let averageScore = 0;

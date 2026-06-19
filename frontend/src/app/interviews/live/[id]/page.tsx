@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,13 +22,13 @@ import { useAuth } from "@clerk/nextjs";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 
-// Mock AI messages for demo
-const mockAIQuestions = [
-  "Hi! I'm your AI interviewer today. Let's begin with a warm-up question. Can you tell me about yourself and what excites you about this role?",
-  "Great answer. Now let's move to a technical question. Can you explain how you would design a real-time notification system for a social media platform? Think about scale, persistence, and delivery guarantees.",
-  "Interesting approach. How would you handle the case where a user is offline when the notification is sent? What storage and retry mechanisms would you use?",
-  "Good thinking. Let's switch to a coding problem. Given a stream of events, how would you implement a rate limiter that allows N requests per minute per user?",
-];
+// Generate a dynamic greeting based on config
+const getInitialGreeting = (config: any) => {
+  if (config?.role && config?.company) {
+    return `Hello! I'm your AI interviewer today. I see you're applying for the ${config.role} position at ${config.company}. To get started, could you tell me a little bit about yourself and your background?`;
+  }
+  return "Hello! I'm your AI interviewer today. To get started, could you tell me a little bit about yourself and your background?";
+};
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -36,12 +36,16 @@ function formatTime(seconds: number) {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function InterviewRoomPage({ params }: { params: { id: string } }) {
+export default function InterviewRoomPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const interviewId = resolvedParams.id;
   const router = useRouter();
   const {
     config,
+    setConfig,
     messages,
     addMessage,
+    clearMessages,
     isAiSpeaking,
     setIsAiSpeaking,
     elapsedSeconds,
@@ -52,6 +56,13 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
   } = useInterviewStore();
 
   const [inputText, setInputText] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Continuous recording refs
+  const continuousRecorderRef = useRef<MediaRecorder | null>(null);
+  const continuousChunksRef = useRef<Blob[]>([]);
+  const [isEnding, setIsEnding] = useState(false);
   const [isAiTyping, setIsAiTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const mode = config.mode || "text";
@@ -77,20 +88,112 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
     }
   }, [messages, isAiTyping]);
 
-  // First AI message on mount
+  // Continuous full-session recording
   useEffect(() => {
-    if (messages.length === 0) {
-      setIsAiTyping(true);
-      setIsAiSpeaking(true);
-      setTimeout(() => {
-        addMessage({ role: "ai", content: mockAIQuestions[0] });
-        setIsAiTyping(false);
-        setIsAiSpeaking(false);
-        setCurrentQuestionIndex(1);
-      }, 2000);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let stream: MediaStream | null = null;
+    const startContinuousRecording = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        continuousRecorderRef.current = mediaRecorder;
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) continuousChunksRef.current.push(e.data);
+        };
+
+        mediaRecorder.start(1000); // capture in chunks of 1s
+      } catch (err) {
+        console.error("Continuous recording failed to start:", err);
+      }
+    };
+
+    startContinuousRecording();
+
+    return () => {
+      if (continuousRecorderRef.current && continuousRecorderRef.current.state !== "inactive") {
+        continuousRecorderRef.current.stop();
+      }
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+      }
+    };
   }, []);
+
+  // Fetch Interview History on mount
+  useEffect(() => {
+    let isMounted = true;
+    const fetchInterview = async () => {
+      try {
+        const res = await api.get(`/interviews/${interviewId}`);
+        const interviewData = res.data.data;
+
+        if (isMounted) {
+          // Restore config if the user reloaded
+          setConfig({
+            company: interviewData.company,
+            role: interviewData.role,
+            experience: interviewData.experience,
+            mode: interviewData.mode === "VOICE" ? "voice" : "text",
+          });
+
+          // Load messages if they exist
+          if (interviewData.messages && interviewData.messages.length > 0) {
+            clearMessages();
+            interviewData.messages.forEach((m: any) => {
+              addMessage({ role: m.role.toLowerCase() as "ai" | "user", content: m.content });
+            });
+            // Approximate current question index based on AI messages
+            const aiMessageCount = interviewData.messages.filter((m: any) => m.role === "AI").length;
+            setCurrentQuestionIndex(Math.max(1, aiMessageCount));
+          } else {
+            // New interview: start with first AI question
+            if (messages.length === 0) {
+              setIsAiTyping(true);
+              setIsAiSpeaking(true);
+              
+              const startGreeting = async () => {
+                const greeting = getInitialGreeting(config);
+                addMessage({ role: "ai", content: greeting });
+                setIsAiTyping(false);
+                
+                try {
+                  if (config.mode === "voice") {
+                    const ttsRes = await api.post(`/interviews/tts`, { text: greeting });
+                    if (ttsRes.data.data?.audio) {
+                      await playBase64Audio(ttsRes.data.data.audio);
+                    }
+                  }
+                } catch (e) {
+                  console.error("Failed to play TTS for greeting", e);
+                } finally {
+                  setIsAiSpeaking(false);
+                  setCurrentQuestionIndex(1);
+                }
+              };
+
+              setTimeout(startGreeting, 1000);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load interview history", error);
+      }
+    };
+
+    fetchInterview();
+    return () => { isMounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interviewId]);
+
+  // Auto-end the interview if the user navigates away or unmounts the component
+  useEffect(() => {
+    return () => {
+      // If we aren't already ending it explicitly via the button, gracefully end it.
+      if (!isEnding) {
+        api.post(`/interviews/${interviewId}/end`).catch(console.error);
+      }
+    };
+  }, [api, interviewId, isEnding]);
 
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
@@ -101,29 +204,68 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
     setIsAiTyping(true);
     setIsAiSpeaking(true);
     try {
-      const res = await api.post(`/api/interviews/${params.id}/message`, { content: userMsg });
+      const res = await api.post(`/interviews/${interviewId}/message`, { content: userMsg });
       const { aiMessage, audio } = res.data.data;
       addMessage({ role: "ai", content: aiMessage.content });
       setIsAiTyping(false);
-      
+
       if (audio) {
         await playBase64Audio(audio);
       }
       setIsAiSpeaking(false);
       setCurrentQuestionIndex(currentQuestionIndex + 1);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(`Error from AI: ${e.response?.data?.message || e.message}`);
       setIsAiTyping(false);
       setIsAiSpeaking(false);
     }
   };
 
   const handleEndInterview = async () => {
+    if (isEnding) return;
+    setIsEnding(true);
+
     try {
-      await api.post(`/api/interviews/${params.id}/end`);
-      router.push(`/interviews/${params.id}/results`);
+      let recordingUrl = null;
+
+      if (continuousRecorderRef.current && continuousRecorderRef.current.state !== "inactive") {
+        const recordingPromise = new Promise<Blob>((resolve) => {
+          continuousRecorderRef.current!.onstop = () => {
+            const blob = new Blob(continuousChunksRef.current, { type: "audio/webm" });
+            resolve(blob);
+          };
+          continuousRecorderRef.current!.stop();
+        });
+
+        const fullAudioBlob = await recordingPromise;
+
+        try {
+          // 1. Get presigned URL
+          const urlRes = await api.get(`/interviews/${interviewId}/upload-url`);
+          const { url, publicUrl } = urlRes.data.data;
+
+          // 2. Upload to S3 directly
+          await fetch(url, {
+            method: "PUT",
+            body: fullAudioBlob,
+            headers: { "Content-Type": "audio/webm" },
+          });
+
+          recordingUrl = publicUrl;
+        } catch (uploadError) {
+          console.error("Failed to upload recording to S3:", uploadError);
+          // Don't block ending the interview if the upload fails (e.g., missing CORS)
+        }
+      }
+
+      // 3. End interview and save URL
+      await api.post(`/interviews/${interviewId}/end`, { recordingUrl });
+      router.push(`/dashboard`); // Go to dashboard, since results might take time
     } catch (error) {
       console.error("Failed to end interview:", error);
+      alert("Failed to end interview and save recording.");
+      setIsEnding(false);
     }
   };
 
@@ -135,27 +277,28 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
       if (audioBlob) {
         setIsAiTyping(true);
         setIsAiSpeaking(true);
-        
+
         try {
           const formData = new FormData();
           formData.append("audio", audioBlob, "recording.webm");
-          
-          const res = await api.post(`/api/interviews/${params.id}/message`, formData, {
+
+          const res = await api.post(`/interviews/${interviewId}/message`, formData, {
             headers: { "Content-Type": "multipart/form-data" }
           });
           const { userContent, aiMessage, audio } = res.data.data;
-          
+
           addMessage({ role: "user", content: userContent });
           addMessage({ role: "ai", content: aiMessage.content });
           setIsAiTyping(false);
-          
+
           if (audio) {
             await playBase64Audio(audio);
           }
           setIsAiSpeaking(false);
           setCurrentQuestionIndex(currentQuestionIndex + 1);
-        } catch (e) {
+        } catch (e: any) {
           console.error(e);
+          alert(`Error processing audio: ${e.response?.data?.message || e.message}`);
           setIsAiTyping(false);
           setIsAiSpeaking(false);
         }
@@ -214,13 +357,9 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
             Skip
           </Button>
 
-          <Button
-            size="sm"
-            className="rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30"
-            onClick={handleEndInterview}
-          >
-            <PhoneOff className="mr-1.5 h-4 w-4" />
-            End
+          <Button variant="destructive" onClick={handleEndInterview} disabled={isEnding}>
+            <PhoneOff className="mr-2 h-4 w-4" />
+            {isEnding ? "Saving Recording..." : "End Interview"}
           </Button>
         </div>
       </header>

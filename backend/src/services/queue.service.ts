@@ -1,10 +1,16 @@
 import { Queue, Worker, Job } from "bullmq";
 import IORedis from "ioredis";
 import config from "../config";
+import { prisma } from "../lib/prisma";
+import * as aiService from "./ai.service";
 
 // ─── Redis Connection (shared by all queues) ───
 const connection = new IORedis(config.redisUrl, {
   maxRetriesPerRequest: null, // Required by BullMQ
+});
+
+connection.on("error", (err) => {
+  console.error("Redis Queue Connection Error:", err.message);
 });
 
 // ─── Queue Definitions ───
@@ -28,10 +34,88 @@ export const evaluationWorker = new Worker(
     const { interviewId } = job.data;
     console.log(`🔄 Processing evaluation for interview: ${interviewId}`);
 
-    // TODO: Fetch all Q&A from database
-    // TODO: Call ai.service.generateFeedbackReport()
-    // TODO: Save results to database
-    // TODO: Notify frontend via WebSocket (optional)
+    // Fetch interview, messages, and resume
+    const interview = await prisma.interview.findUnique({
+      where: { id: interviewId },
+      include: {
+        messages: { orderBy: { createdAt: "asc" } },
+        resume: true,
+      },
+    });
+
+    if (!interview) {
+      throw new Error("Interview not found");
+    }
+
+    const history = interview.messages.map((m) => ({
+      role: m.role === "USER" ? "user" : "ai",
+      content: m.content,
+    })) as { role: "user" | "ai"; content: string }[];
+
+    const context = {
+      company: interview.company,
+      role: interview.role,
+      experienceLevel: interview.experience,
+      mode: interview.mode,
+    };
+
+    const resumeText = interview.resume?.parsedText || null;
+
+    // Generate feedback report via AI
+    console.log(`🧠 Calling Groq to generate scorecard...`);
+    const report = await aiService.generateFeedbackReport(context, resumeText, history);
+
+    // Save evaluation results
+    const evaluation = await prisma.evaluation.create({
+      data: {
+        interviewId,
+        overallScore: report.overallScore || 0,
+        strengths: report.strengths || [],
+        weaknesses: report.weaknesses || [],
+        recommendation: report.recommendation,
+        categories: {
+          create: (report.categories || []).map((c: any) => ({
+            name: c.name,
+            score: c.score,
+          })),
+        },
+      },
+    });
+
+    // Update per-message feedback
+    if (report.questionsFeedback && Array.isArray(report.questionsFeedback)) {
+      const userMessages = interview.messages.filter(m => m.role === "USER");
+      
+      for (let i = 0; i < report.questionsFeedback.length; i++) {
+        const feedbackItem = report.questionsFeedback[i];
+        // Try exact match first
+        let matchedMsg = userMessages.find(m => m.content.trim() === feedbackItem.userAnswer?.trim());
+        
+        // Fallback to sequential matching if lengths align
+        if (!matchedMsg && userMessages.length === report.questionsFeedback.length) {
+          matchedMsg = userMessages[i];
+        }
+
+        if (matchedMsg) {
+          await prisma.message.update({
+            where: { id: matchedMsg.id },
+            data: {
+              score: feedbackItem.score,
+              feedback: feedbackItem.feedback
+            }
+          });
+        }
+      }
+    }
+
+    // Update interview status and score
+    await prisma.interview.update({
+      where: { id: interviewId },
+      data: {
+        status: "COMPLETED",
+        overallScore: report.overallScore || 0,
+      },
+    });
 
     console.log(`✅ Evaluation complete for interview: ${interviewId}`);
     return { interviewId, status: "completed" };

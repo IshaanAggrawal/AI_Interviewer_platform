@@ -5,7 +5,10 @@ import { getAuth } from "@clerk/express";
 import { prisma } from "../lib/prisma";
 import * as deepgramService from "../services/deepgram.service";
 import * as aiService from "../services/ai.service";
+import * as storageService from "../services/storage.service";
+import { invalidateUserCache } from "../middlewares/cache";
 import { getOrCreateLocalUser } from "../services/user.service";
+import { queueEvaluation } from "../services/queue.service";
 
 /**
  * POST /api/interviews
@@ -74,12 +77,28 @@ export const listInterviews = asyncHandler(async (req: Request, res: Response) =
  * Fetches a single interview with its messages.
  */
 export const getInterview = asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = getAuth(req);
+  if (!userId) throw new AppError(401, "Unauthorized");
+
   const id = req.params.id as string;
+  const localUser = await getOrCreateLocalUser(userId);
 
-  // TODO: Fetch interview from database
-  // TODO: Verify ownership
+  const interview = await prisma.interview.findUnique({
+    where: { id },
+    include: {
+      messages: { orderBy: { createdAt: "asc" } }
+    }
+  });
 
-  res.json({ success: true, data: { id, status: "in-progress", messages: [] } });
+  if (!interview) {
+    throw new AppError(404, "Interview not found");
+  }
+
+  if (interview.userId !== localUser.id) {
+    throw new AppError(403, "You do not have permission to access this interview");
+  }
+
+  res.json({ success: true, data: interview });
 });
 
 /**
@@ -168,20 +187,56 @@ export const submitAnswer = asyncHandler(async (req: Request, res: Response) => 
 });
 
 /**
+ * GET /api/interviews/:id/upload-url
+ * Generates an S3 presigned URL for uploading a full interview recording.
+ */
+export const getUploadUrl = asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = getAuth(req);
+  if (!userId) throw new AppError(401, "Unauthorized");
+
+  const id = req.params.id as string;
+  const localUser = await getOrCreateLocalUser(userId);
+
+  const interview = await prisma.interview.findUnique({ where: { id } });
+  if (!interview) throw new AppError(404, "Interview not found");
+  if (interview.userId !== localUser.id) throw new AppError(403, "Permission denied");
+
+  const key = `interviews/${localUser.id}/${id}/recording.webm`;
+  const presignedData = await storageService.getPresignedUploadUrl(key, "audio/webm");
+
+  res.json({ success: true, data: presignedData });
+});
+
+/**
  * POST /api/interviews/:id/end
- * Ends the interview and queues the evaluation job.
+ * Ends the interview, saves recordingUrl, and queues the evaluation job.
  */
 export const endInterview = asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = getAuth(req);
   const id = req.params.id as string;
+  const { recordingUrl } = req.body || {};
 
-  // TODO: Update interview status to "evaluating"
-  // TODO: Queue evaluation job via BullMQ
-  // TODO: Return immediately (background worker handles heavy AI evaluation)
+  await prisma.interview.update({
+    where: { id },
+    data: { 
+      status: "EVALUATING",
+      ...(recordingUrl && { recordingUrl })
+    }
+  });
+
+  if (userId) {
+    await invalidateUserCache(userId);
+  }
+
+  // Queue evaluation job via BullMQ
+  await queueEvaluation(id);
+
+  // Return immediately (background worker handles heavy AI evaluation)
 
   res.json({
     success: true,
     message: "Interview ended. Generating your scorecard...",
-    data: { id, status: "evaluating" },
+    data: { id, status: "evaluating", recordingUrl },
   });
 });
 
@@ -192,19 +247,57 @@ export const endInterview = asyncHandler(async (req: Request, res: Response) => 
 export const getResults = asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
 
-  // TODO: Fetch evaluation results from database
-  // TODO: Return 202 if still processing
+  // Fetch evaluation results from database
+  const interview = await prisma.interview.findUnique({
+    where: { id },
+    include: {
+      evaluation: {
+        include: { categories: true },
+      },
+      messages: { orderBy: { createdAt: "asc" } },
+    },
+  });
+
+  if (!interview) {
+    throw new AppError(404, "Interview not found");
+  }
+
+  // Return 202 if still processing
+  if (interview.status === "IN_PROGRESS" || interview.status === "EVALUATING") {
+    return res.status(202).json({
+      success: true,
+      message: "Evaluation is currently processing",
+      data: { status: "evaluating" },
+    });
+  }
 
   res.json({
     success: true,
     data: {
       id,
-      overallScore: 85,
-      status: "completed",
-      categories: [],
-      strengths: [],
-      weaknesses: [],
-      questions: [],
+      overallScore: interview.overallScore,
+      status: interview.status,
+      strengths: interview.evaluation?.strengths || [],
+      weaknesses: interview.evaluation?.weaknesses || [],
+      recommendation: interview.evaluation?.recommendation || null,
+      categories: interview.evaluation?.categories || [],
+      questions: interview.messages || [],
+      recordingUrl: interview.recordingUrl || null,
     },
+  });
+});
+
+/**
+ * POST /api/interviews/tts
+ * Generates TTS audio for a given text. Useful for the initial greeting.
+ */
+export const generateTts = asyncHandler(async (req: Request, res: Response) => {
+  const { text } = req.body;
+  if (!text) throw new AppError(400, "Text is required");
+  
+  const audioBuffer = await deepgramService.generateSpeech(text);
+  res.json({
+    success: true,
+    data: { audio: audioBuffer.toString("base64") }
   });
 });

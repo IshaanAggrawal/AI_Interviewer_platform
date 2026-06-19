@@ -18,66 +18,14 @@ import {
   BarChart3,
   MessageSquare,
   Sparkles,
+  Loader2,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, use } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { useApiClient } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-const mockResult = {
-  overallScore: 85,
-  company: "Google",
-  role: "Frontend Engineer",
-  experience: "Mid-Level",
-  date: "June 18, 2026",
-  duration: "24:35",
-  totalQuestions: 6,
-  strengths: [
-    "Strong understanding of system design fundamentals",
-    "Clear communication of trade-offs",
-    "Good use of real-world examples",
-  ],
-  weaknesses: [
-    "Could elaborate more on edge cases",
-    "Missed opportunity to discuss monitoring/observability",
-    "Time management — spent too long on Q2",
-  ],
-  categories: [
-    { name: "Technical Accuracy", score: 88 },
-    { name: "Communication", score: 82 },
-    { name: "Problem Solving", score: 90 },
-    { name: "System Design", score: 85 },
-    { name: "Code Quality", score: 78 },
-  ],
-  questions: [
-    {
-      q: "Tell me about yourself and what excites you about this role?",
-      a: "I'm a frontend engineer with 3 years of experience building React applications...",
-      score: 90,
-      feedback:
-        "Excellent introduction that highlights relevant experience. Good energy and enthusiasm. Consider mentioning a specific Google product you'd love to work on to make it more targeted.",
-    },
-    {
-      q: "Design a real-time notification system for a social media platform.",
-      a: "I would use a pub-sub architecture with WebSockets for real-time delivery and a message queue for reliability...",
-      score: 85,
-      feedback:
-        "Solid approach with pub-sub and WebSockets. You correctly identified the need for persistence. Could have discussed push notification channels (mobile, email) and user preference management.",
-    },
-    {
-      q: "How would you handle offline users for the notification system?",
-      a: "I would store pending notifications in a database and deliver them when the user comes back online...",
-      score: 80,
-      feedback:
-        "Good basic answer. Consider discussing TTL for notifications, batching multiple notifications, and the read/unread state synchronization across devices.",
-    },
-    {
-      q: "Implement a rate limiter: N requests per minute per user.",
-      a: "I'd use a sliding window algorithm with Redis storing request counts per user...",
-      score: 88,
-      feedback:
-        "Great choice of algorithm. Your Redis implementation approach is production-ready. Could have mentioned distributed rate limiting and how to handle clock skew across nodes.",
-    },
-  ],
-};
+// Removed mockResult
 
 function getScoreBadge(score: number) {
   if (score >= 90)
@@ -134,8 +82,89 @@ function ScoreCircle({ score }: { score: number }) {
   );
 }
 
-export default function ResultsPage() {
+export default function ResultsPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const { getToken } = useAuth();
+  const api = useApiClient(getToken);
+
   const [expandedQ, setExpandedQ] = useState<number | null>(0);
+  const [result, setResult] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [isEvaluating, setIsEvaluating] = useState(true);
+
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
+    const fetchResults = async () => {
+      try {
+        const res = await api.get(`/interviews/${id}/results`);
+        
+        if (res.status === 202 || res.data.data.status === "evaluating") {
+          setIsEvaluating(true);
+          timeoutId = setTimeout(fetchResults, 3000);
+        } else {
+          setResult(res.data.data);
+          setIsEvaluating(false);
+        }
+      } catch (error) {
+        console.error("Failed to fetch results", error);
+        setIsEvaluating(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchResults();
+
+    return () => clearTimeout(timeoutId);
+  }, [id, api]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (isEvaluating) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background text-center px-4">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-6" />
+        <h1 className="text-2xl font-bold mb-2 text-foreground">AI is evaluating your interview...</h1>
+        <p className="text-muted-foreground max-w-md">
+          This usually takes about 10-30 seconds depending on the length of your interview. Please wait, this page will automatically refresh when your scorecard is ready.
+        </p>
+      </div>
+    );
+  }
+
+  if (!result) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background text-center">
+        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+        <h1 className="text-2xl font-bold mb-2">Results not found</h1>
+        <Link href="/dashboard">
+          <Button variant="outline" className="mt-4">Back to Dashboard</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  // Format Q&A from raw messages
+  const qna: any[] = [];
+  let currentQ: any = null;
+  (result.questions || []).forEach((msg: any) => {
+    if (msg.role === "AI") {
+      if (currentQ) qna.push(currentQ);
+      currentQ = { q: msg.content, a: "Did not answer", score: null, feedback: null };
+    } else if (msg.role === "USER" && currentQ) {
+      currentQ.a = msg.content;
+      currentQ.score = msg.score !== undefined ? msg.score : null;
+      currentQ.feedback = msg.feedback || null;
+    }
+  });
+  if (currentQ) qna.push(currentQ);
 
   return (
     <div className="min-h-screen bg-background">
@@ -170,20 +199,25 @@ export default function ResultsPage() {
             Interview Scorecard
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {mockResult.company} · {mockResult.role} · {mockResult.date}
+            Interview Review
           </p>
+          {result.recordingUrl && (
+            <div className="mt-6 w-full max-w-md">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Full Session Recording
+              </p>
+              <audio controls className="w-full" src={result.recordingUrl} />
+            </div>
+          )}
         </div>
 
         {/* ─── Overall Score & Category Scores ─── */}
         <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Overall Score */}
           <Card className="flex flex-col items-center justify-center rounded-2xl border-border/50 bg-card py-8 shadow-sm">
-            <ScoreCircle score={mockResult.overallScore} />
+            <ScoreCircle score={result.overallScore || 0} />
             <p className="mt-3 text-sm text-muted-foreground">
               Overall Performance
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {mockResult.totalQuestions} questions · {mockResult.duration}
             </p>
           </Card>
 
@@ -196,7 +230,7 @@ export default function ResultsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {mockResult.categories.map((cat) => {
+              {(result.categories || []).map((cat: any) => {
                 const badge = getScoreBadge(cat.score);
                 return (
                   <div key={cat.name}>
@@ -234,7 +268,7 @@ export default function ResultsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {mockResult.strengths.map((s, i) => (
+              {(result.strengths || []).map((s: string, i: number) => (
                 <div key={i} className="flex items-start gap-2.5">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-chart-3" />
                   <p className="text-sm leading-relaxed">{s}</p>
@@ -251,7 +285,7 @@ export default function ResultsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {mockResult.weaknesses.map((w, i) => (
+              {(result.weaknesses || []).map((w: string, i: number) => (
                 <div key={i} className="flex items-start gap-2.5">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
                   <p className="text-sm leading-relaxed">{w}</p>
@@ -269,10 +303,10 @@ export default function ResultsPage() {
               Question-by-Question Breakdown
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {mockResult.questions.map((item, i) => {
+            <CardContent className="space-y-3">
+            {qna.map((item, i) => {
               const isOpen = expandedQ === i;
-              const badge = getScoreBadge(item.score);
+              const badge = item.score !== null ? getScoreBadge(item.score) : null;
               return (
                 <div
                   key={i}
@@ -296,14 +330,16 @@ export default function ResultsPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span
-                        className={cn(
-                          "rounded-full px-2.5 py-0.5 text-xs font-bold",
-                          badge.color
-                        )}
-                      >
-                        {item.score}
-                      </span>
+                      {badge && (
+                        <span
+                          className={cn(
+                            "rounded-full px-2.5 py-0.5 text-xs font-bold",
+                            badge.color
+                          )}
+                        >
+                          {item.score}
+                        </span>
+                      )}
                       {isOpen ? (
                         <ChevronUp className="h-4 w-4 text-muted-foreground" />
                       ) : (
@@ -317,20 +353,24 @@ export default function ResultsPage() {
                         <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                           Your Answer
                         </p>
-                        <p className="text-sm leading-relaxed text-foreground/80">
+                        <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap">
                           {item.a}
                         </p>
                       </div>
-                      <Separator />
-                      <div>
-                        <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
-                          <Sparkles className="h-3 w-3" />
-                          AI Feedback
-                        </p>
-                        <p className="text-sm leading-relaxed text-foreground/80">
-                          {item.feedback}
-                        </p>
-                      </div>
+                      {item.feedback && (
+                        <>
+                          <Separator />
+                          <div>
+                            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+                              <Sparkles className="h-3 w-3" />
+                              AI Feedback
+                            </p>
+                            <p className="text-sm leading-relaxed text-foreground/80">
+                              {item.feedback}
+                            </p>
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

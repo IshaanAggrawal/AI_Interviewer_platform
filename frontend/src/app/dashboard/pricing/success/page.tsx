@@ -7,7 +7,9 @@ import { useApiClient } from "@/lib/api";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export default function PricingSuccessPage() {
+import { Suspense } from "react";
+
+function SuccessContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("session_id");
@@ -88,5 +90,13 @@ export default function PricingSuccessPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PricingSuccessPage() {
+  return (
+    <Suspense fallback={<div className="flex flex-col items-center justify-center min-h-[60vh]"><Loader2 className="h-8 w-8 text-primary animate-spin" /></div>}>
+      <SuccessContent />
+    </Suspense>
   );
 }

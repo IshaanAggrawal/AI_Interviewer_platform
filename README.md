@@ -44,7 +44,7 @@ graph TB
     end
 
     subgraph Queue["📨 Async Processing Layer"]
-        REDIS["Redis"]
+        REDIS["Redis<br/>(BullMQ + API Caching)"]
         BQ["BullMQ Workers<br/>• Evaluation Worker<br/>• Resume Parsing Worker"]
     end
 
@@ -61,6 +61,9 @@ graph TB
     AG --> AIS
     AG --> RS
     AG --> ANS
+    
+    ANS -->|Cache Dashboard| REDIS
+    IS -->|Cache History| REDIS
 
     IS -->|Generate Questions| AIS
     AIS -->|LLM Inference| GROQ
@@ -94,11 +97,12 @@ graph TB
 | **Frontend** | Next.js + Shadcn UI | Server-side rendering for SEO, App Router for nested layouts, Shadcn for enterprise-grade accessible UI |
 | **Auth** | Clerk | Production-ready auth in minutes — OAuth, JWT, webhook sync — so we don't waste time building auth from scratch |
 | **API Gateway** | Express + Rate Limiter | Single entry point with CORS, Helmet security headers, and per-IP rate limiting (100 req/15min) |
+| **Caching** | Redis (Upstash) | Express middleware caches heavy DB endpoints (Dashboard, History) for 60s, invalidates instantly on updates |
 | **AI Engine** | Groq (llama-3.3-70b) | Ultra-low latency inference (~200ms). Structured JSON output for scores/feedback. Cost-effective at scale |
 | **Voice** | Deepgram | Real-time streaming STT with <300ms latency. Enterprise-grade accuracy |
 | **Queue** | BullMQ + Redis | Prevents API timeout on heavy AI calls. Workers process evaluation jobs async with retry + exponential backoff |
 | **Database** | PostgreSQL (Neon) | Relational data (users → interviews → messages → scores). Neon gives serverless Postgres with branching |
-| **Storage** | AWS S3 | Infinite scale for resume PDFs and audio recordings. Pre-signed URLs for secure direct client uploads |
+| **Storage** | AWS S3 | Infinite scale for resume PDFs and audio recordings. Pre-signed URLs for secure direct client uploads bypassing Node |
 
 ---
 
@@ -138,7 +142,11 @@ sequenceDiagram
 
     Note over U, S3: 3️⃣ Evaluation Phase
     U->>FE: End Interview
+    FE->>API: GET /api/interviews/:id/upload-url
+    API-->>FE: Secure S3 Presigned URL
+    FE->>S3: PUT recording.webm (Direct Upload)
     FE->>API: POST /api/interviews/:id/end
+    API->>DB: Update Status + Save recordingUrl
     API-->>FE: 202 Accepted (processing...)
     API->>Q: Queue comprehensive evaluation job
 

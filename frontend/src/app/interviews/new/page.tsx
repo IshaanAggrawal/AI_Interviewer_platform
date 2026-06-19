@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
@@ -79,6 +79,23 @@ export default function NewInterviewPage() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [limitError, setLimitError] = useState<string | null>(null);
+  
+  const [resumes, setResumes] = useState<{id: string, fileName: string}[]>([]);
+  const [selectedResumeId, setSelectedResumeId] = useState<string>("new");
+
+  useEffect(() => {
+    const fetchResumes = async () => {
+      try {
+        const res = await api.get("/resumes");
+        if (res.data?.data) {
+          setResumes(res.data.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch resumes:", err);
+      }
+    };
+    fetchResumes();
+  }, [api]);
 
   const isValid = config.company && config.role && config.experience;
 
@@ -97,14 +114,18 @@ export default function NewInterviewPage() {
       let resumeId = null;
 
       // 1. Upload Resume if provided
-      if (config.resumeFile) {
-        const formData = new FormData();
-        formData.append("file", config.resumeFile);
-        
-        const resumeRes = await api.post("/resumes/upload", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        resumeId = resumeRes.data.data.id;
+      if (selectedResumeId === "new") {
+        if (config.resumeFile) {
+          const formData = new FormData();
+          formData.append("file", config.resumeFile);
+          
+          const resumeRes = await api.post("/resumes/upload", formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+          resumeId = resumeRes.data.data.id;
+        }
+      } else {
+        resumeId = selectedResumeId;
       }
 
       // 2. Create Interview
@@ -119,7 +140,7 @@ export default function NewInterviewPage() {
       const interviewId = interviewRes.data.data.id;
       
       // 3. Redirect to live session
-      router.push(`/interviews/${interviewId}`);
+      router.push(`/interviews/live/${interviewId}`);
     } catch (error: any) {
       console.error("Failed to start interview:", error);
       if (error.response?.status === 403 && error.response?.data?.message?.startsWith("LIMIT_REACHED")) {
@@ -256,8 +277,37 @@ export default function NewInterviewPage() {
                   (optional)
                 </span>
               </label>
-              <div
-                className={cn(
+              
+              {resumes.length > 0 && (
+                <div className="mb-4">
+                  <Select
+                    value={selectedResumeId}
+                    onValueChange={(v) => {
+                      setSelectedResumeId(v || "new");
+                      if (v !== "new") {
+                        setFileName(null);
+                        setConfig({ resumeFile: null });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-11 rounded-xl border-white/10 bg-white/5 hover:bg-white/10 transition-colors">
+                      <SelectValue placeholder="Select a resume" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="new">Upload a new resume</SelectItem>
+                      {resumes.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.fileName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {selectedResumeId === "new" && (
+                <div
+                  className={cn(
                   "relative flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 transition-all",
                   dragActive
                     ? "border-primary bg-primary/10"
@@ -309,6 +359,7 @@ export default function NewInterviewPage() {
                   </>
                 )}
               </div>
+              )}
             </CardContent>
           </Card>
 
