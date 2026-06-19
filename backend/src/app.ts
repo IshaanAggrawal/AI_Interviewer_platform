@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import { rateLimit } from "express-rate-limit";
+import { clerkMiddleware, requireAuth } from "@clerk/express";
 
 import config from "./config";
 import { errorHandler } from "./middlewares/error-handler";
@@ -23,6 +24,7 @@ app.use(cors({ origin: process.env.FRONTEND_URL || "http://localhost:3000", cred
 app.use(morgan(config.env === "production" ? "combined" : "dev"));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use(clerkMiddleware());
 
 // ─── Rate Limiting ───
 const limiter = rateLimit({
@@ -40,11 +42,14 @@ app.get("/health", (_req, res) => {
 });
 
 // ─── API Routes ───
+// Webhooks shouldn't require auth (Clerk signs them)
 app.use("/api/auth", authRoutes);
-app.use("/api/interviews", interviewRoutes);
-app.use("/api/resumes", resumeRoutes);
-app.use("/api/ai", aiRoutes);
-app.use("/api/analytics", analyticsRoutes);
+
+// Protect all other routes
+app.use("/api/interviews", requireAuth(), interviewRoutes);
+app.use("/api/resumes", requireAuth(), resumeRoutes);
+app.use("/api/ai", requireAuth(), aiRoutes);
+app.use("/api/analytics", requireAuth(), analyticsRoutes);
 
 // ─── Error Handling ───
 app.use(notFoundHandler);

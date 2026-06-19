@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -105,20 +106,33 @@ export default function LandingPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Link href="/dashboard">
-              <Button
-                variant="ghost"
-                className="hidden rounded-full text-sm sm:inline-flex"
-              >
-                Sign In
-              </Button>
-            </Link>
-            <Link href="/interviews/new">
-              <Button className="rounded-full bg-gradient-to-r from-primary to-chart-3 px-5 text-sm font-semibold text-white shadow-lg shadow-primary/25 transition hover:shadow-xl hover:shadow-primary/30">
-                Get Started Free
-                <ArrowRight className="ml-1.5 h-4 w-4" />
-              </Button>
-            </Link>
+            <SignedOut>
+              <SignInButton mode="modal">
+                <Button
+                  variant="ghost"
+                  className="hidden rounded-full text-sm sm:inline-flex"
+                >
+                  Sign In
+                </Button>
+              </SignInButton>
+              <SignUpButton mode="modal">
+                <Button className="rounded-full bg-gradient-to-r from-primary to-chart-3 px-5 text-sm font-semibold text-white shadow-lg shadow-primary/25 transition hover:shadow-xl hover:shadow-primary/30">
+                  Get Started Free
+                  <ArrowRight className="ml-1.5 h-4 w-4" />
+                </Button>
+              </SignUpButton>
+            </SignedOut>
+            <SignedIn>
+              <Link href="/dashboard">
+                <Button
+                  variant="ghost"
+                  className="rounded-full text-sm"
+                >
+                  Dashboard
+                </Button>
+              </Link>
+              <UserButton afterSignOutUrl="/" />
+            </SignedIn>
           </div>
         </div>
       </nav>

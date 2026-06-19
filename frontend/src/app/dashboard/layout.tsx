@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { UserButton } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
@@ -80,20 +81,15 @@ export default function DashboardLayout({
 
         {/* Bottom */}
         <div className="border-t border-border p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-chart-5/30 text-sm font-bold text-primary">
-              IA
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <p className="truncate text-sm font-semibold">Ishaan A.</p>
-              <p className="truncate text-xs text-muted-foreground">
-                ishaan@email.com
-              </p>
-            </div>
-            <button className="text-muted-foreground transition hover:text-foreground">
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
+          <UserButton
+            showName={true}
+            appearance={{
+              elements: {
+                userButtonBox: "flex-row-reverse w-full justify-between",
+                userButtonOuterIdentifier: "text-sm font-semibold truncate",
+              },
+            }}
+          />
         </div>
       </aside>
 
