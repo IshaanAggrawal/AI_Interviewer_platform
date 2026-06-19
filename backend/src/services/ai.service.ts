@@ -62,6 +62,49 @@ ${resumeText ? `Candidate Resume: ${resumeText}` : "No resume provided."}`
   }
 };
 
+export const generateNextQuestionStream = async (
+  context: { company: string; role: string; experienceLevel: string; mode: string },
+  resumeText: string | null,
+  history: { role: "user" | "ai"; content: string }[]
+) => {
+  if (!config.groq.apiKey && !process.env.GROQ_API_KEY) {
+    throw new AppError(500, "Groq API key is missing");
+  }
+
+  const messages: any[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: `Context: Target Company: ${context.company}, Role: ${context.role}, Experience: ${context.experienceLevel}. Mode: ${context.mode}.
+${resumeText ? `Candidate Resume: ${resumeText}` : "No resume provided."}`
+    }
+  ];
+
+  const windowSize = 6;
+  const recentHistory = history.slice(-windowSize);
+
+  recentHistory.forEach(msg => {
+    messages.push({
+      role: msg.role === "ai" ? "assistant" : "user",
+      content: msg.content
+    });
+  });
+
+  try {
+    const stream = await groq.chat.completions.create({
+      messages,
+      model: "llama-3.3-70b-versatile",
+      temperature: 0.7,
+      max_tokens: 250,
+      stream: true,
+    });
+    return stream;
+  } catch (error) {
+    console.error("Groq AI Stream Error:", error);
+    throw new AppError(500, "Failed to generate AI streaming response");
+  }
+};
+
 export const generateFeedbackReport = async (
   context: { company: string; role: string; experienceLevel: string; mode: string },
   resumeText: string | null,

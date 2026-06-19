@@ -40,6 +40,7 @@ interface InterviewState {
   setStatus: (status: InterviewStatus) => void;
   messages: Message[];
   addMessage: (message: Omit<Message, "id" | "timestamp">) => void;
+  updateLastMessage: (content: string) => void;
   clearMessages: () => void;
 
   // Voice state
@@ -96,6 +97,14 @@ export const useInterviewStore = create<InterviewState>((set) => ({
         },
       ],
     })),
+  updateLastMessage: (content) =>
+    set((state) => {
+      const messages = [...state.messages];
+      if (messages.length > 0) {
+        messages[messages.length - 1].content += content;
+      }
+      return { messages };
+    }),
   clearMessages: () => set({ messages: [] }),
 
   isSpeaking: false,

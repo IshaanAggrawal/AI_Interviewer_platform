@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useInterviewStore } from "@/store/interview-store";
 import {
   Mic,
@@ -20,7 +19,8 @@ import { cn } from "@/lib/utils";
 import { useApiClient } from "@/lib/api";
 import { useAuth } from "@clerk/nextjs";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
-import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { useStreamPlayer } from "@/hooks/useStreamPlayer";
+import { io, Socket } from "socket.io-client";
 
 // Generate a dynamic greeting based on config
 const getInitialGreeting = (config: any) => {
@@ -53,6 +53,7 @@ export default function InterviewRoomPage({ params }: { params: Promise<{ id: st
     currentQuestionIndex,
     setCurrentQuestionIndex,
     totalQuestions,
+    updateLastMessage,
   } = useInterviewStore();
 
   const [inputText, setInputText] = useState("");
@@ -71,7 +72,61 @@ export default function InterviewRoomPage({ params }: { params: Promise<{ id: st
   const api = useApiClient(getToken);
 
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
-  const { playBase64Audio, stopAudio } = useAudioPlayer();
+  const { addChunk, stop: stopAudio, initAudio } = useStreamPlayer();
+  const [socket, setSocket] = useState<Socket | null>(null);
+
+  // Initialize Socket.io
+  useEffect(() => {
+    // Determine the base URL (strip /api if present)
+    const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/api\/?$/, "");
+    
+    const s = io(`${baseUrl}/interview`, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
+
+    setSocket(s);
+
+    s.on("connect", () => {
+      s.emit("join_interview", { interviewId });
+    });
+
+    s.on("user_transcript", (data) => {
+      addMessage({ role: "user", content: data.text });
+    });
+
+    s.on("ai_start", () => {
+      addMessage({ role: "ai", content: "" });
+      setIsAiTyping(true);
+      setIsAiSpeaking(true);
+    });
+
+    s.on("text_chunk", (data) => {
+      updateLastMessage(data.text);
+      setIsAiTyping(true);
+    });
+
+    s.on("audio_chunk", (data) => {
+      addChunk(data.audio);
+    });
+
+    s.on("ai_end", () => {
+      setIsAiTyping(false);
+      setIsAiSpeaking(false);
+      setCurrentQuestionIndex(useInterviewStore.getState().currentQuestionIndex + 1);
+    });
+
+    s.on("error", (err) => {
+      console.error("Socket error:", err);
+      setIsAiTyping(false);
+      setIsAiSpeaking(false);
+    });
+
+    return () => {
+      s.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interviewId]);
 
   // Timer
   useEffect(() => {
@@ -160,7 +215,7 @@ export default function InterviewRoomPage({ params }: { params: Promise<{ id: st
                   if (config.mode === "voice") {
                     const ttsRes = await api.post(`/interviews/tts`, { text: greeting });
                     if (ttsRes.data.data?.audio) {
-                      await playBase64Audio(ttsRes.data.data.audio);
+                      addChunk(ttsRes.data.data.audio);
                     }
                   }
                 } catch (e) {
@@ -196,30 +251,15 @@ export default function InterviewRoomPage({ params }: { params: Promise<{ id: st
   }, [api, interviewId, isEnding]);
 
   const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !socket) return;
     const userMsg = inputText.trim();
-    addMessage({ role: "user", content: userMsg });
     setInputText("");
 
+    initAudio();
     setIsAiTyping(true);
     setIsAiSpeaking(true);
-    try {
-      const res = await api.post(`/interviews/${interviewId}/message`, { content: userMsg });
-      const { aiMessage, audio } = res.data.data;
-      addMessage({ role: "ai", content: aiMessage.content });
-      setIsAiTyping(false);
-
-      if (audio) {
-        await playBase64Audio(audio);
-      }
-      setIsAiSpeaking(false);
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-    } catch (e: any) {
-      console.error(e);
-      alert(`Error from AI: ${e.response?.data?.message || e.message}`);
-      setIsAiTyping(false);
-      setIsAiSpeaking(false);
-    }
+    
+    socket.emit("send_message", { interviewId, text: userMsg });
   };
 
   const handleEndInterview = async () => {
@@ -274,34 +314,12 @@ export default function InterviewRoomPage({ params }: { params: Promise<{ id: st
       await startRecording();
     } else {
       const audioBlob = await stopRecording();
-      if (audioBlob) {
+      if (audioBlob && socket) {
+        initAudio();
         setIsAiTyping(true);
         setIsAiSpeaking(true);
 
-        try {
-          const formData = new FormData();
-          formData.append("audio", audioBlob, "recording.webm");
-
-          const res = await api.post(`/interviews/${interviewId}/message`, formData, {
-            headers: { "Content-Type": "multipart/form-data" }
-          });
-          const { userContent, aiMessage, audio } = res.data.data;
-
-          addMessage({ role: "user", content: userContent });
-          addMessage({ role: "ai", content: aiMessage.content });
-          setIsAiTyping(false);
-
-          if (audio) {
-            await playBase64Audio(audio);
-          }
-          setIsAiSpeaking(false);
-          setCurrentQuestionIndex(currentQuestionIndex + 1);
-        } catch (e: any) {
-          console.error(e);
-          alert(`Error processing audio: ${e.response?.data?.message || e.message}`);
-          setIsAiTyping(false);
-          setIsAiSpeaking(false);
-        }
+        socket.emit("send_message", { interviewId, audio: audioBlob });
       }
     }
   };
@@ -438,9 +456,9 @@ export default function InterviewRoomPage({ params }: { params: Promise<{ id: st
         </div>
 
         {/* ─── Right: Chat / Transcript ─── */}
-        <div className="flex flex-1 flex-col">
+        <div className="flex flex-1 flex-col overflow-hidden">
           {/* Messages */}
-          <ScrollArea className="flex-1 p-6" ref={scrollRef}>
+          <div className="flex-1 overflow-y-auto p-6" ref={scrollRef}>
             <div className="mx-auto max-w-2xl space-y-4">
               {messages.map((msg) => (
                 <div
@@ -496,7 +514,7 @@ export default function InterviewRoomPage({ params }: { params: Promise<{ id: st
                 </div>
               )}
             </div>
-          </ScrollArea>
+          </div>
 
           {/* ─── Input Bar ─── */}
           <div className="border-t border-white/10 bg-[#0a110b] p-4">

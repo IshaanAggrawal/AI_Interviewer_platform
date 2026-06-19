@@ -47,9 +47,8 @@ export const generateSpeech = async (text: string): Promise<Buffer> => {
     const response = await deepgram.speak.request(
       { text },
       {
-        model: "aura-asteria-en", // Asteria is a popular, natural-sounding English voice
-        encoding: "linear16",
-        container: "wav",
+        model: "aura-asteria-en",
+        encoding: "mp3",
       }
     );
 

@@ -61,6 +61,22 @@ export const evaluationWorker = new Worker(
 
     const resumeText = interview.resume?.parsedText || null;
 
+    const existingEval = await prisma.evaluation.findUnique({
+      where: { interviewId },
+    });
+
+    if (existingEval) {
+      console.log(`⚠️ Evaluation already exists for interview ${interviewId}, skipping scorecard generation.`);
+      await prisma.interview.update({
+        where: { id: interviewId },
+        data: {
+          status: "COMPLETED",
+          overallScore: existingEval.overallScore,
+        },
+      });
+      return { interviewId, status: "completed" };
+    }
+
     // Generate feedback report via AI
     console.log(`🧠 Calling Groq to generate scorecard...`);
     const report = await aiService.generateFeedbackReport(context, resumeText, history);
