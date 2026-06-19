@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import { toast } from "sonner";
 
 export function useAudioRecorder() {
   const [isRecording, setIsRecording] = useState(false);
@@ -20,7 +21,7 @@ export function useAudioRecorder() {
       setIsRecording(true);
     } catch (error) {
       console.error("Error accessing microphone:", error);
-      alert("Microphone access denied or unavailable.");
+      toast.error("Microphone access denied or unavailable.");
     }
   }, []);
 

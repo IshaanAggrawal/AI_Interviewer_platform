@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useApiClient } from "@/lib/api";
@@ -78,7 +79,6 @@ export default function NewInterviewPage() {
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [limitError, setLimitError] = useState<string | null>(null);
   
   const [resumes, setResumes] = useState<{id: string, fileName: string}[]>([]);
   const [selectedResumeId, setSelectedResumeId] = useState<string>("new");
@@ -143,10 +143,13 @@ export default function NewInterviewPage() {
       router.push(`/interviews/live/${interviewId}`);
     } catch (error: any) {
       console.error("Failed to start interview:", error);
-      if (error.response?.status === 403 && error.response?.data?.message?.startsWith("LIMIT_REACHED")) {
-        setLimitError(error.response.data.message);
+      const serverError = error.response?.data?.error || error.response?.data?.message;
+      if (error.response?.status === 403 && serverError?.startsWith("LIMIT_REACHED")) {
+        const planName = serverError.includes("FREE") ? "FREE" : serverError.includes("PRO") ? "PRO" : "Current";
+        toast.error(`You've reached the limit of your ${planName} plan. Please upgrade to continue.`);
+        router.push("/dashboard/pricing");
       } else {
-        alert("Failed to start interview. Please try again.");
+        toast.error("Failed to start interview. Please try again.");
       }
     } finally {
       setIsLoading(false);
@@ -439,29 +442,6 @@ export default function NewInterviewPage() {
         </div>
       </div>
 
-      {/* Limit Modal */}
-      <Dialog open={!!limitError} onOpenChange={(open) => !open && setLimitError(null)}>
-        <DialogContent className="bg-[#111111] border-white/10 text-white rounded-3xl sm:max-w-md">
-          <DialogHeader>
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-              <Sparkles className="h-8 w-8 text-primary" />
-            </div>
-            <DialogTitle className="text-2xl text-center">Upgrade Required</DialogTitle>
-            <DialogDescription className="text-center text-base pt-2 text-muted-foreground">
-              {limitError === "LIMIT_REACHED_FREE" 
-                ? "You've reached the limit of 2 free mock interviews. Upgrade to Pro to unlock 10 interviews and premium AI feedback."
-                : "You've reached your Pro plan limit. Upgrade to Pro Max for unlimited interviews."}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="sm:justify-center mt-4">
-            <Link href="/dashboard/pricing" className="w-full">
-              <Button className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold shadow-lg hover:shadow-xl transition-all" onClick={() => setLimitError(null)}>
-                View Pricing Plans
-              </Button>
-            </Link>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

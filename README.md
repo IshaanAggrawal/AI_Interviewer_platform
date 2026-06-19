@@ -98,11 +98,46 @@ graph TB
 | **Auth** | Clerk | Production-ready auth in minutes — OAuth, JWT, webhook sync — so we don't waste time building auth from scratch |
 | **API Gateway** | Express + Rate Limiter | Single entry point with CORS, Helmet security headers, and per-IP rate limiting (100 req/15min) |
 | **Caching** | Redis (Upstash) | Express middleware caches heavy DB endpoints (Dashboard, History) for 60s, invalidates instantly on updates |
-| **AI Engine** | Groq (llama-3.3-70b) | Ultra-low latency inference (~200ms). Structured JSON output for scores/feedback. Cost-effective at scale |
-| **Voice** | Deepgram | Real-time streaming STT with <300ms latency. Enterprise-grade accuracy |
+| **AI Engine** | Groq (llama-3.3-70b) | Ultra-low latency inference (~200ms). Streams token-by-token for real-time responsiveness. |
+| **Voice** | Deepgram | Real-time streaming STT & Aura TTS. Converts text to MP3 audio chunks instantly. |
+| **Real-time Comms** | Socket.IO | Bidirectional event-based streaming (STT → LLM → TTS) avoiding HTTP request overhead. |
 | **Queue** | BullMQ + Redis | Prevents API timeout on heavy AI calls. Workers process evaluation jobs async with retry + exponential backoff |
 | **Database** | PostgreSQL (Neon) | Relational data (users → interviews → messages → scores). Neon gives serverless Postgres with branching |
 | **Storage** | AWS S3 | Infinite scale for resume PDFs and audio recordings. Pre-signed URLs for secure direct client uploads bypassing Node |
+
+---
+
+## ⚡ Real-Time AI Streaming Architecture
+
+To achieve true **sub-second conversational latency**, the platform bypasses traditional HTTP request-response cycles for live interviews, utilizing a bidirectional WebSocket pipeline. The AI begins speaking its first sentence before it has even finished generating its last sentence.
+
+```mermaid
+sequenceDiagram
+    participant FE as Next.js (Web Audio API)
+    participant API as Express + Socket.IO
+    participant STT as Deepgram (STT)
+    participant LLM as Groq (llama-3.3-70b)
+    participant TTS as Deepgram Aura (TTS)
+
+    FE->>API: 1. Emit audio blob (Socket.IO)
+    API->>STT: 2. Transcribe Audio
+    STT-->>API: 3. Return Text Transcript
+    API-->>FE: 4. Emit "user_transcript" (UI update)
+    
+    API->>LLM: 5. Prompt LLM (stream: true)
+    
+    loop Token Streaming
+        LLM-->>API: 6. Yield Token
+        API-->>FE: 7. Emit "text_chunk" (Typing animation)
+        
+        opt Sentence Boundary Reached (. ? !)
+            API->>TTS: 8. Send accumulated sentence
+            TTS-->>API: 9. Return MP3 audio buffer
+            API-->>FE: 10. Emit "audio_chunk"
+            Note over FE: useStreamPlayer queues & plays<br/>MP3 chunks without gaps
+        end
+    end
+```
 
 ---
 

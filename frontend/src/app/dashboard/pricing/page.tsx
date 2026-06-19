@@ -3,8 +3,9 @@
 import { useAuth } from "@clerk/nextjs";
 import { useApiClient } from "@/lib/api";
 import { CheckCircle2, Zap, Trophy, Crown, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 const tiers = [
   {
@@ -43,6 +44,21 @@ export default function PricingPage() {
   const { getToken } = useAuth();
   const api = useApiClient(getToken);
   const [loading, setLoading] = useState<string | null>(null);
+  const [currentTier, setCurrentTier] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const res = await api.get("/auth/me");
+        if (res.data?.data?.tier) {
+          setCurrentTier(res.data.data.tier);
+        }
+      } catch (err) {
+        console.error("Failed to fetch user tier:", err);
+      }
+    };
+    fetchUser();
+  }, [api]);
 
   const handleSubscribe = async (tierId: string) => {
     if (tierId === "FREE") return;
@@ -54,7 +70,8 @@ export default function PricingPage() {
       }
     } catch (error) {
       console.error("Payment error:", error);
-      alert("Failed to start checkout session. Please try again.");
+      toast.error("Failed to start checkout session. Please try again.");
+    } finally {
       setLoading(null);
     }
   };
@@ -104,16 +121,16 @@ export default function PricingPage() {
 
             <Button
               className={`w-full h-12 rounded-xl font-bold text-base transition-all ${
-                tier.id === "FREE" 
+                tier.id === currentTier 
                   ? "bg-white/10 text-white hover:bg-white/20" 
                   : `bg-gradient-to-r ${tier.gradient} text-white shadow-lg hover:shadow-xl hover:scale-[1.02]`
               }`}
-              disabled={loading === tier.id || tier.id === "FREE"}
+              disabled={loading === tier.id || tier.id === currentTier}
               onClick={() => handleSubscribe(tier.id)}
             >
               {loading === tier.id ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
-              ) : tier.id === "FREE" ? (
+              ) : tier.id === currentTier ? (
                 "Current Plan"
               ) : (
                 "Upgrade Now"

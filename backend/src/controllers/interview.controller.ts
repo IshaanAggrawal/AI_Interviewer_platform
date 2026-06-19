@@ -218,7 +218,7 @@ export const endInterview = asyncHandler(async (req: Request, res: Response) => 
 
   await prisma.interview.update({
     where: { id },
-    data: { 
+    data: {
       status: "EVALUATING",
       ...(recordingUrl && { recordingUrl })
     }
@@ -294,7 +294,7 @@ export const getResults = asyncHandler(async (req: Request, res: Response) => {
 export const generateTts = asyncHandler(async (req: Request, res: Response) => {
   const { text } = req.body;
   if (!text) throw new AppError(400, "Text is required");
-  
+
   const audioBuffer = await deepgramService.generateSpeech(text);
   res.json({
     success: true,

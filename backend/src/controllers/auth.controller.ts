@@ -1,5 +1,8 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "../middlewares/async-handler";
+import { getAuth } from "@clerk/express";
+import { getOrCreateLocalUser } from "../services/user.service";
+import { prisma } from "../lib/prisma";
 
 /**
  * POST /api/auth/webhook
@@ -22,15 +25,46 @@ export const clerkWebhook = asyncHandler(async (req: Request, res: Response) => 
  * Returns the current user's profile from the database.
  */
 export const getMe = asyncHandler(async (req: Request, res: Response) => {
-  // TODO: Extract Clerk userId from auth middleware
-  // TODO: Fetch user from database
+  const { userId } = getAuth(req);
+  if (!userId) {
+    res.status(401).json({ success: false, message: "Unauthorized" });
+    return;
+  }
+
+  const localUser = await getOrCreateLocalUser(userId);
 
   res.json({
     success: true,
-    data: {
-      id: "placeholder",
-      email: "ishaan@email.com",
-      name: "Ishaan Aggrawal",
-    },
+    data: localUser,
+  });
+});
+
+/**
+ * PUT /api/auth/me
+ * Updates the current user's profile in the database.
+ */
+export const updateMe = asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = getAuth(req);
+  if (!userId) {
+    res.status(401).json({ success: false, message: "Unauthorized" });
+    return;
+  }
+
+  const { name } = req.body;
+  if (!name || name.trim() === "") {
+    res.status(400).json({ success: false, message: "Name is required" });
+    return;
+  }
+
+  const localUser = await getOrCreateLocalUser(userId);
+
+  const updatedUser = await prisma.user.update({
+    where: { id: localUser.id },
+    data: { name: name.trim() },
+  });
+
+  res.json({
+    success: true,
+    data: updatedUser,
   });
 });

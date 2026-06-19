@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, FileText, Upload, Trash2, Calendar, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export default function ResumesPage() {
   const { getToken } = useAuth();
@@ -44,7 +45,7 @@ export default function ResumesPage() {
       await fetchResumes();
     } catch (error) {
       console.error("Upload failed", error);
-      alert("Failed to upload resume.");
+      toast.error("Failed to upload resume.");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -58,7 +59,7 @@ export default function ResumesPage() {
       await fetchResumes();
     } catch (error) {
       console.error("Delete failed", error);
-      alert("Failed to delete resume.");
+      toast.error("Failed to delete resume.");
     }
   };
 

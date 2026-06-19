@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useApiClient } from "@/lib/api";
 import { useAuth } from "@clerk/nextjs";
+import { toast } from "sonner";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useStreamPlayer } from "@/hooks/useStreamPlayer";
 import { io, Socket } from "socket.io-client";
@@ -304,7 +305,7 @@ export default function InterviewRoomPage({ params }: { params: Promise<{ id: st
       router.push(`/dashboard`); // Go to dashboard, since results might take time
     } catch (error) {
       console.error("Failed to end interview:", error);
-      alert("Failed to end interview and save recording.");
+      toast.error("Failed to end interview and save recording.");
       setIsEnding(false);
     }
   };

@@ -10,4 +10,7 @@ router.post("/webhook", authController.clerkWebhook);
 // GET /api/auth/me — Get current user profile (requires auth)
 router.get("/me", requireAuth, authController.getMe);
 
+// PUT /api/auth/me — Update current user profile
+router.put("/me", requireAuth, authController.updateMe);
+
 export default router;
