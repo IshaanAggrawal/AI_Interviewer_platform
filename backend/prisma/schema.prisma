@@ -1,0 +1,140 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users (synced from Clerk) ───
+model User {
+  id            String   @id @default(cuid())
+  clerkId       String   @unique
+  email         String   @unique
+  name          String?
+  imageUrl      String?
+  role          UserRole @default(CANDIDATE)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  resumes       Resume[]
+  interviews    Interview[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  CANDIDATE
+  ADMIN
+}
+
+// ─── Resumes ───
+model Resume {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileName      String
+  s3Key         String
+  parsedSkills  String[]     // Extracted from resume by AI
+  parsedText    String?      @db.Text
+  status        ResumeStatus @default(UPLOADING)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  interviews    Interview[]
+
+  @@map("resumes")
+}
+
+enum ResumeStatus {
+  UPLOADING
+  PARSING
+  PARSED
+  FAILED
+}
+
+// ─── Interviews ───
+model Interview {
+  id            String          @id @default(cuid())
+  userId        String
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resumeId      String?
+  resume        Resume?         @relation(fields: [resumeId], references: [id])
+  company       String
+  role          String
+  experience    String
+  mode          InterviewMode   @default(TEXT)
+  status        InterviewStatus @default(IN_PROGRESS)
+  overallScore  Int?
+  duration      Int?            // in seconds
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  messages      Message[]
+  evaluation    Evaluation?
+
+  @@map("interviews")
+}
+
+enum InterviewMode {
+  TEXT
+  VOICE
+}
+
+enum InterviewStatus {
+  IN_PROGRESS
+  EVALUATING
+  COMPLETED
+  CANCELLED
+}
+
+// ─── Messages (conversation log) ───
+model Message {
+  id            String   @id @default(cuid())
+  interviewId   String
+  interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  role          MessageRole
+  content       String   @db.Text
+  score         Int?     // Per-message score (for user answers)
+  feedback      String?  @db.Text
+  createdAt     DateTime @default(now())
+
+  @@index([interviewId])
+  @@map("messages")
+}
+
+enum MessageRole {
+  AI
+  USER
+}
+
+// ─── Evaluations (final scorecard) ───
+model Evaluation {
+  id            String   @id @default(cuid())
+  interviewId   String   @unique
+  interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  overallScore  Int
+  strengths     String[]
+  weaknesses    String[]
+  recommendation String? @db.Text
+
+  categories    CategoryScore[]
+  createdAt     DateTime @default(now())
+
+  @@map("evaluations")
+}
+
+// ─── Category Scores (Technical, Communication, etc.) ───
+model CategoryScore {
+  id            String     @id @default(cuid())
+  evaluationId  String
+  evaluation    Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  name          String
+  score         Int
+
+  @@map("category_scores")
+}

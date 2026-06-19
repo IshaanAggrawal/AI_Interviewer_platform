@@ -1,0 +1,53 @@
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import morgan from "morgan";
+import { rateLimit } from "express-rate-limit";
+
+import config from "./config";
+import { errorHandler } from "./middlewares/error-handler";
+import { notFoundHandler } from "./middlewares/not-found";
+
+// ─── Route Imports ───
+import authRoutes from "./routes/auth.routes";
+import interviewRoutes from "./routes/interview.routes";
+import resumeRoutes from "./routes/resume.routes";
+import aiRoutes from "./routes/ai.routes";
+import analyticsRoutes from "./routes/analytics.routes";
+
+const app = express();
+
+// ─── Global Middlewares ───
+app.use(helmet());
+app.use(cors({ origin: process.env.FRONTEND_URL || "http://localhost:3000", credentials: true }));
+app.use(morgan(config.env === "production" ? "combined" : "dev"));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+// ─── Rate Limiting ───
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,                  // limit each IP to 100 requests per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later." },
+});
+app.use("/api", limiter);
+
+// ─── Health Check ───
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// ─── API Routes ───
+app.use("/api/auth", authRoutes);
+app.use("/api/interviews", interviewRoutes);
+app.use("/api/resumes", resumeRoutes);
+app.use("/api/ai", aiRoutes);
+app.use("/api/analytics", analyticsRoutes);
+
+// ─── Error Handling ───
+app.use(notFoundHandler);
+app.use(errorHandler);
+
+export default app;
