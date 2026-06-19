@@ -13,6 +13,7 @@ import {
   Sparkles,
   BarChart3,
   Shield,
+  CheckCircle2,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -85,6 +86,9 @@ export default function LandingPage() {
             </a>
             <a href="#how" className="transition hover:text-white">
               How It Works
+            </a>
+            <a href="#pricing" className="transition hover:text-white">
+              Pricing
             </a>
           </div>
 
@@ -286,6 +290,115 @@ export default function LandingPage() {
               </motion.div>
             ))}
 
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Pricing ─── */}
+      <section id="pricing" className="relative border-t border-white/5 bg-[#0a0a0c] px-6 py-32 overflow-hidden">
+        <div className="relative z-10 mx-auto max-w-7xl">
+          <div className="mb-20 text-center">
+            <h2 className="text-3xl font-bold tracking-tight text-white md:text-5xl">
+              Simple, transparent pricing
+            </h2>
+            <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
+              Choose the plan that best fits your interview preparation needs.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+            {/* Free */}
+            <div className="relative rounded-3xl border border-white/10 bg-white/5 p-8 shadow-xl hover:border-white/20 transition-colors">
+              <h3 className="text-2xl font-bold text-white mb-2">Free</h3>
+              <div className="mb-4 flex items-baseline text-white">
+                <span className="text-4xl font-extrabold tracking-tight">$0</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-8 min-h-[40px]">
+                Perfect for trying out the platform.
+              </p>
+              <ul className="space-y-4 mb-8">
+                <li className="flex items-center gap-3 text-sm text-gray-300">
+                  <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+                  2 Mock Interviews
+                </li>
+                <li className="flex items-center gap-3 text-sm text-gray-300">
+                  <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+                  Basic Analytics
+                </li>
+                <li className="flex items-center gap-3 text-sm text-gray-300">
+                  <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+                  Text Mode Only
+                </li>
+              </ul>
+              <SignUpButton mode="modal">
+                <Button className="w-full h-12 rounded-xl bg-white/10 text-white font-bold hover:bg-white/20">
+                  Get Started
+                </Button>
+              </SignUpButton>
+            </div>
+
+            {/* Pro */}
+            <div className="relative rounded-3xl border border-primary/50 bg-[#111111] p-8 shadow-xl overflow-hidden group hover:border-primary/70 transition-colors">
+              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-primary to-emerald-700" />
+              <h3 className="text-2xl font-bold text-white mb-2">Pro</h3>
+              <div className="mb-4 flex items-baseline text-white">
+                <span className="text-4xl font-extrabold tracking-tight">$9.99</span>
+                <span className="text-muted-foreground ml-1">/month</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-8 min-h-[40px]">
+                Everything you need to land the job.
+              </p>
+              <ul className="space-y-4 mb-8">
+                <li className="flex items-center gap-3 text-sm text-gray-300">
+                  <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+                  10 Mock Interviews
+                </li>
+                <li className="flex items-center gap-3 text-sm text-gray-300">
+                  <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+                  Detailed AI Feedback
+                </li>
+                <li className="flex items-center gap-3 text-sm text-gray-300">
+                  <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+                  Voice Mode
+                </li>
+              </ul>
+              <SignUpButton mode="modal">
+                <Button className="w-full h-12 rounded-xl bg-gradient-to-r from-primary to-emerald-700 text-white font-bold shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all">
+                  Get Started
+                </Button>
+              </SignUpButton>
+            </div>
+
+            {/* Pro Max */}
+            <div className="relative rounded-3xl border border-white/10 bg-white/5 p-8 shadow-xl hover:border-white/20 transition-colors">
+              <h3 className="text-2xl font-bold text-white mb-2">Pro Max</h3>
+              <div className="mb-4 flex items-baseline text-white">
+                <span className="text-4xl font-extrabold tracking-tight">$19.99</span>
+                <span className="text-muted-foreground ml-1">/month</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-8 min-h-[40px]">
+                Unlimited access for serious candidates.
+              </p>
+              <ul className="space-y-4 mb-8">
+                <li className="flex items-center gap-3 text-sm text-gray-300">
+                  <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+                  Unlimited Interviews
+                </li>
+                <li className="flex items-center gap-3 text-sm text-gray-300">
+                  <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+                  Real-time Voice Analysis
+                </li>
+                <li className="flex items-center gap-3 text-sm text-gray-300">
+                  <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+                  Advanced Stats
+                </li>
+              </ul>
+              <SignUpButton mode="modal">
+                <Button className="w-full h-12 rounded-xl bg-white/10 text-white font-bold hover:bg-white/20">
+                  Get Started
+                </Button>
+              </SignUpButton>
+            </div>
           </div>
         </div>
       </section>

@@ -82,16 +82,52 @@ export default function DashboardPage() {
     },
   ];
 
+  const renderUsage = () => {
+    if (!data) return null;
+    const { userTier = "FREE", totalInterviews = 0 } = data;
+    const limit = userTier === "FREE" ? 2 : userTier === "PRO" ? 10 : "Unlimited";
+    const percent = limit === "Unlimited" ? 100 : Math.min(100, (totalInterviews / (limit as number)) * 100);
+    
+    return (
+      <div className="rounded-2xl border border-white/10 bg-[#111111] p-4 min-w-[250px] shadow-xl">
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-sm font-semibold text-white">Plan Usage ({userTier})</span>
+          <span className="text-xs text-muted-foreground">{totalInterviews} / {limit} Mocks</span>
+        </div>
+        <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+          <div 
+            className={`h-full ${percent >= 100 ? "bg-red-500" : "bg-primary"} transition-all`} 
+            style={{ width: `${limit === "Unlimited" ? 0 : percent}%` }}
+          />
+        </div>
+        {(percent >= 100 || userTier !== "PRO_MAX") && limit !== "Unlimited" && (
+          <div className="mt-3 text-right">
+            <Link href="/dashboard/pricing" className="text-xs text-primary font-bold hover:underline flex items-center justify-end gap-1">
+              Upgrade Plan <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* ─── Header ─── */}
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-white">
-          Overview
-        </h1>
-        <p className="mt-2 text-base text-muted-foreground">
-          Welcome back. Here&apos;s a detailed breakdown of your interview performance.
-        </p>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white">
+            Overview
+          </h1>
+          <p className="mt-2 text-base text-muted-foreground">
+            Welcome back. Here&apos;s a detailed breakdown of your interview performance.
+          </p>
+        </div>
+        
+        {/* Usage Tracker */}
+        <div>
+          {renderUsage()}
+        </div>
       </div>
 
       {/* ─── Stats ─── */}

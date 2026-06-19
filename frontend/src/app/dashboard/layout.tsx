@@ -18,6 +18,7 @@ const navItems = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { label: "History", href: "/dashboard/history", icon: Clock },
   { label: "Resumes", href: "/dashboard/resumes", icon: BarChart3 },
+  { label: "Pricing", href: "/dashboard/pricing", icon: Settings },
 ];
 
 export default function DashboardLayout({

@@ -15,6 +15,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useInterviewStore } from "@/store/interview-store";
 import {
   Upload,
@@ -70,6 +78,7 @@ export default function NewInterviewPage() {
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [limitError, setLimitError] = useState<string | null>(null);
 
   const isValid = config.company && config.role && config.experience;
 
@@ -111,9 +120,13 @@ export default function NewInterviewPage() {
       
       // 3. Redirect to live session
       router.push(`/interviews/${interviewId}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to start interview:", error);
-      alert("Failed to start interview. Please try again.");
+      if (error.response?.status === 403 && error.response?.data?.message?.startsWith("LIMIT_REACHED")) {
+        setLimitError(error.response.data.message);
+      } else {
+        alert("Failed to start interview. Please try again.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -374,6 +387,30 @@ export default function NewInterviewPage() {
           </Button>
         </div>
       </div>
+
+      {/* Limit Modal */}
+      <Dialog open={!!limitError} onOpenChange={(open) => !open && setLimitError(null)}>
+        <DialogContent className="bg-[#111111] border-white/10 text-white rounded-3xl sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+              <Sparkles className="h-8 w-8 text-primary" />
+            </div>
+            <DialogTitle className="text-2xl text-center">Upgrade Required</DialogTitle>
+            <DialogDescription className="text-center text-base pt-2 text-muted-foreground">
+              {limitError === "LIMIT_REACHED_FREE" 
+                ? "You've reached the limit of 2 free mock interviews. Upgrade to Pro to unlock 10 interviews and premium AI feedback."
+                : "You've reached your Pro plan limit. Upgrade to Pro Max for unlimited interviews."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-center mt-4">
+            <Link href="/dashboard/pricing" className="w-full">
+              <Button className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold shadow-lg hover:shadow-xl transition-all" onClick={() => setLimitError(null)}>
+                View Pricing Plans
+              </Button>
+            </Link>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
