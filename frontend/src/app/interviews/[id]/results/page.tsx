@@ -140,7 +140,7 @@ export default function ResultsPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Top bar */}
-      <header className="sticky top-0 z-50 border-b border-border/60 bg-white/70 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
           <Link
             href="/dashboard"
@@ -177,7 +177,7 @@ export default function ResultsPage() {
         {/* ─── Overall Score & Category Scores ─── */}
         <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Overall Score */}
-          <Card className="flex flex-col items-center justify-center rounded-2xl border-border/50 bg-white py-8 shadow-sm">
+          <Card className="flex flex-col items-center justify-center rounded-2xl border-border/50 bg-card py-8 shadow-sm">
             <ScoreCircle score={mockResult.overallScore} />
             <p className="mt-3 text-sm text-muted-foreground">
               Overall Performance
@@ -188,7 +188,7 @@ export default function ResultsPage() {
           </Card>
 
           {/* Category Breakdown */}
-          <Card className="col-span-1 rounded-2xl border-border/50 bg-white shadow-sm lg:col-span-2">
+          <Card className="col-span-1 rounded-2xl border-border/50 bg-card shadow-sm lg:col-span-2">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <BarChart3 className="h-4 w-4 text-primary" />
@@ -226,7 +226,7 @@ export default function ResultsPage() {
 
         {/* ─── Strengths & Weaknesses ─── */}
         <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2">
-          <Card className="rounded-2xl border-border/50 bg-white shadow-sm">
+          <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base font-semibold text-chart-3">
                 <TrendingUp className="h-4 w-4" />
@@ -243,7 +243,7 @@ export default function ResultsPage() {
             </CardContent>
           </Card>
 
-          <Card className="rounded-2xl border-border/50 bg-white shadow-sm">
+          <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base font-semibold text-amber-600">
                 <TrendingDown className="h-4 w-4" />
@@ -262,7 +262,7 @@ export default function ResultsPage() {
         </div>
 
         {/* ─── Q&A Breakdown ─── */}
-        <Card className="rounded-2xl border-border/50 bg-white shadow-sm">
+        <Card className="rounded-2xl border-border/50 bg-card shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base font-semibold">
               <MessageSquare className="h-4 w-4 text-primary" />

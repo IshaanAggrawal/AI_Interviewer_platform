@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
+import { useApiClient } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,9 +64,12 @@ const experienceLevels = [
 
 export default function NewInterviewPage() {
   const router = useRouter();
+  const { getToken } = useAuth();
+  const api = useApiClient(getToken);
   const { config, setConfig } = useInterviewStore();
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const isValid = config.company && config.role && config.experience;
 
@@ -75,20 +80,53 @@ export default function NewInterviewPage() {
     }
   };
 
-  const handleStart = () => {
-    if (isValid) {
-      router.push("/interviews/live/mock-session-1");
+  const handleStart = async () => {
+    if (!isValid) return;
+    setIsLoading(true);
+
+    try {
+      let resumeId = null;
+
+      // 1. Upload Resume if provided
+      if (config.resumeFile) {
+        const formData = new FormData();
+        formData.append("file", config.resumeFile);
+        
+        const resumeRes = await api.post("/resumes/upload", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        resumeId = resumeRes.data.data.id;
+      }
+
+      // 2. Create Interview
+      const interviewRes = await api.post("/interviews", {
+        company: config.company,
+        role: config.role,
+        experience: config.experience,
+        mode: config.mode,
+        resumeId,
+      });
+
+      const interviewId = interviewRes.data.data.id;
+      
+      // 3. Redirect to live session
+      router.push(`/interviews/${interviewId}`);
+    } catch (error) {
+      console.error("Failed to start interview:", error);
+      alert("Failed to start interview. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-[#09090b] text-white">
       {/* Top bar */}
-      <header className="sticky top-0 z-50 border-b border-border/60 bg-white/70 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-white/5 bg-[#0a0a0c]/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-6">
           <Link
             href="/dashboard"
-            className="flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-foreground"
+            className="flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-white"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to Dashboard
@@ -121,17 +159,17 @@ export default function NewInterviewPage() {
 
         <div className="space-y-6">
           {/* Company */}
-          <Card className="rounded-2xl border-border/50 bg-white shadow-sm">
-            <CardContent className="p-5">
+          <Card className="rounded-3xl border border-white/10 bg-[#111111] shadow-xl overflow-hidden relative group">
+            <CardContent className="p-6">
               <label className="mb-2.5 flex items-center gap-2 text-sm font-semibold">
                 <Building2 className="h-4 w-4 text-primary" />
                 Target Company
               </label>
               <Select
                 value={config.company}
-                onValueChange={(v) => setConfig({ company: v })}
+                onValueChange={(v) => setConfig({ company: v || undefined })}
               >
-                <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
+                <SelectTrigger className="h-11 rounded-xl border-white/10 bg-white/5 hover:bg-white/10 transition-colors">
                   <SelectValue placeholder="Select a company" />
                 </SelectTrigger>
                 <SelectContent>
@@ -146,17 +184,17 @@ export default function NewInterviewPage() {
           </Card>
 
           {/* Role */}
-          <Card className="rounded-2xl border-border/50 bg-white shadow-sm">
-            <CardContent className="p-5">
+          <Card className="rounded-3xl border border-white/10 bg-[#111111] shadow-xl overflow-hidden relative group">
+            <CardContent className="p-6">
               <label className="mb-2.5 flex items-center gap-2 text-sm font-semibold">
                 <Briefcase className="h-4 w-4 text-primary" />
                 Role
               </label>
               <Select
                 value={config.role}
-                onValueChange={(v) => setConfig({ role: v })}
+                onValueChange={(v) => setConfig({ role: v || undefined })}
               >
-                <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
+                <SelectTrigger className="h-11 rounded-xl border-white/10 bg-white/5 hover:bg-white/10 transition-colors">
                   <SelectValue placeholder="Select a role" />
                 </SelectTrigger>
                 <SelectContent>
@@ -171,17 +209,17 @@ export default function NewInterviewPage() {
           </Card>
 
           {/* Experience */}
-          <Card className="rounded-2xl border-border/50 bg-white shadow-sm">
-            <CardContent className="p-5">
+          <Card className="rounded-3xl border border-white/10 bg-[#111111] shadow-xl overflow-hidden relative group">
+            <CardContent className="p-6">
               <label className="mb-2.5 flex items-center gap-2 text-sm font-semibold">
                 <GraduationCap className="h-4 w-4 text-primary" />
                 Experience Level
               </label>
               <Select
                 value={config.experience}
-                onValueChange={(v) => setConfig({ experience: v })}
+                onValueChange={(v) => setConfig({ experience: v || undefined })}
               >
-                <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
+                <SelectTrigger className="h-11 rounded-xl border-white/10 bg-white/5 hover:bg-white/10 transition-colors">
                   <SelectValue placeholder="Select experience level" />
                 </SelectTrigger>
                 <SelectContent>
@@ -196,8 +234,8 @@ export default function NewInterviewPage() {
           </Card>
 
           {/* Resume Upload */}
-          <Card className="rounded-2xl border-border/50 bg-white shadow-sm">
-            <CardContent className="p-5">
+          <Card className="rounded-3xl border border-white/10 bg-[#111111] shadow-xl overflow-hidden relative group">
+            <CardContent className="p-6">
               <label className="mb-2.5 flex items-center gap-2 text-sm font-semibold">
                 <FileText className="h-4 w-4 text-primary" />
                 Resume{" "}
@@ -207,10 +245,10 @@ export default function NewInterviewPage() {
               </label>
               <div
                 className={cn(
-                  "relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-all",
+                  "relative flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 transition-all",
                   dragActive
-                    ? "border-primary bg-primary/5"
-                    : "border-border/60 bg-background/30 hover:border-primary/40 hover:bg-primary/5"
+                    ? "border-primary bg-primary/10"
+                    : "border-white/10 bg-white/5 hover:border-primary/40 hover:bg-white/10"
                 )}
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -262,8 +300,8 @@ export default function NewInterviewPage() {
           </Card>
 
           {/* Interview Mode */}
-          <Card className="rounded-2xl border-border/50 bg-white shadow-sm">
-            <CardContent className="p-5">
+          <Card className="rounded-3xl border border-white/10 bg-[#111111] shadow-xl overflow-hidden relative group">
+            <CardContent className="p-6">
               <label className="mb-3 block text-sm font-semibold">
                 Interview Mode
               </label>
@@ -271,10 +309,10 @@ export default function NewInterviewPage() {
                 <button
                   onClick={() => setConfig({ mode: "text" })}
                   className={cn(
-                    "flex items-center gap-3 rounded-xl border-2 p-4 transition-all",
+                    "flex items-center gap-3 rounded-2xl border p-4 transition-all",
                     config.mode === "text"
-                      ? "border-primary bg-primary/5 shadow-sm"
-                      : "border-border/60 hover:border-primary/30"
+                      ? "border-primary bg-primary/10 shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+                      : "border-white/10 bg-white/5 hover:border-white/20"
                   )}
                 >
                   <div
@@ -298,10 +336,10 @@ export default function NewInterviewPage() {
                 <button
                   onClick={() => setConfig({ mode: "voice" })}
                   className={cn(
-                    "flex items-center gap-3 rounded-xl border-2 p-4 transition-all",
+                    "flex items-center gap-3 rounded-2xl border p-4 transition-all",
                     config.mode === "voice"
-                      ? "border-primary bg-primary/5 shadow-sm"
-                      : "border-border/60 hover:border-primary/30"
+                      ? "border-primary bg-primary/10 shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+                      : "border-white/10 bg-white/5 hover:border-white/20"
                   )}
                 >
                   <div
@@ -328,11 +366,11 @@ export default function NewInterviewPage() {
           {/* Start Button */}
           <Button
             onClick={handleStart}
-            disabled={!isValid}
-            className="h-14 w-full rounded-2xl bg-gradient-to-r from-primary to-chart-3 text-base font-semibold text-white shadow-lg shadow-primary/20 transition-all hover:shadow-xl hover:shadow-primary/25 disabled:opacity-40 disabled:shadow-none"
+            disabled={!isValid || isLoading}
+            className="h-14 w-full rounded-2xl bg-primary text-base font-semibold text-primary-foreground shadow-[0_0_20px_rgba(16,185,129,0.2)] transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(16,185,129,0.3)] disabled:opacity-40 disabled:shadow-none disabled:hover:scale-100"
           >
-            Start Interview
-            <ArrowRight className="ml-2 h-5 w-5" />
+            {isLoading ? "Setting up interview..." : "Start Interview"}
+            {!isLoading && <ArrowRight className="ml-2 h-5 w-5" />}
           </Button>
         </div>
       </div>

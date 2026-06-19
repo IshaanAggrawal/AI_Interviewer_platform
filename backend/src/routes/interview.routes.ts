@@ -1,8 +1,10 @@
 import { Router } from "express";
+import multer from "multer";
 import * as interviewController from "../controllers/interview.controller";
 import { validate } from "../middlewares/validate";
-import { createInterviewSchema, submitAnswerSchema } from "../validators/interview.validators";
+import { createInterviewSchema } from "../validators/interview.validators";
 
+const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
 
 // POST /api/interviews — Create (init) a new interview session
@@ -14,8 +16,8 @@ router.get("/", interviewController.listInterviews);
 // GET  /api/interviews/:id — Get single interview detail
 router.get("/:id", interviewController.getInterview);
 
-// POST /api/interviews/:id/message — Submit an answer & get next question
-router.post("/:id/message", validate(submitAnswerSchema), interviewController.submitAnswer);
+// POST /api/interviews/:id/message — Submit an answer (text or audio) & get next question
+router.post("/:id/message", upload.single("audio"), interviewController.submitAnswer);
 
 // POST /api/interviews/:id/end — End interview & trigger evaluation
 router.post("/:id/end", interviewController.endInterview);

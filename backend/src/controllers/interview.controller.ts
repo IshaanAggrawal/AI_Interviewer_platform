@@ -1,27 +1,41 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "../middlewares/async-handler";
 import { AppError } from "../middlewares/error-handler";
+import { getAuth } from "@clerk/express";
+import { prisma } from "../lib/prisma";
+import * as deepgramService from "../services/deepgram.service";
+import * as aiService from "../services/ai.service";
+import { getOrCreateLocalUser } from "../services/user.service";
 
 /**
  * POST /api/interviews
  * Creates a new interview session based on company, role, experience, mode.
  */
 export const createInterview = asyncHandler(async (req: Request, res: Response) => {
-  const { company, role, experience, mode } = req.body;
+  const { userId } = getAuth(req);
+  if (!userId) {
+    throw new AppError(401, "Unauthorized");
+  }
 
-  // TODO: Get userId from auth middleware
-  // TODO: Create interview in database via Prisma
-  // TODO: Use AI service to generate the first question
+  const { company, role, experience, mode, resumeId } = req.body;
 
-  const interview = {
-    id: `int_${Date.now()}`,
-    company,
-    role,
-    experience,
-    mode,
-    status: "in-progress",
-    createdAt: new Date().toISOString(),
-  };
+  if (!company || !role || !experience || !mode) {
+    throw new AppError(400, "Missing required fields");
+  }
+
+  const localUser = await getOrCreateLocalUser(userId);
+
+  const interview = await prisma.interview.create({
+    data: {
+      userId: localUser.id,
+      resumeId: resumeId || null,
+      company,
+      role,
+      experience,
+      mode: mode === "voice" ? "VOICE" : "TEXT",
+      status: "IN_PROGRESS",
+    },
+  });
 
   res.status(201).json({ success: true, data: interview });
 });
@@ -31,10 +45,19 @@ export const createInterview = asyncHandler(async (req: Request, res: Response) 
  * Lists all interviews for the authenticated user.
  */
 export const listInterviews = asyncHandler(async (req: Request, res: Response) => {
-  // TODO: Get userId from auth middleware
-  // TODO: Fetch interviews from database with pagination
+  const { userId } = getAuth(req);
+  if (!userId) {
+    throw new AppError(401, "Unauthorized");
+  }
 
-  res.json({ success: true, data: [], pagination: { page: 1, total: 0 } });
+  const localUser = await getOrCreateLocalUser(userId);
+
+  const interviews = await prisma.interview.findMany({
+    where: { userId: localUser.id },
+    orderBy: { createdAt: "desc" },
+  });
+
+  res.json({ success: true, data: interviews, pagination: { page: 1, total: interviews.length } });
 });
 
 /**
@@ -42,7 +65,7 @@ export const listInterviews = asyncHandler(async (req: Request, res: Response) =
  * Fetches a single interview with its messages.
  */
 export const getInterview = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   // TODO: Fetch interview from database
   // TODO: Verify ownership
@@ -55,21 +78,84 @@ export const getInterview = asyncHandler(async (req: Request, res: Response) => 
  * User submits an answer → AI generates the next question.
  */
 export const submitAnswer = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { content } = req.body;
+  const id = req.params.id as string;
+  const file = req.file;
+  let userContent = req.body.content;
 
-  // TODO: Save user message to database
-  // TODO: Call AI service to evaluate answer + generate next question
-  // TODO: Save AI response to database
+  // 1. STT (Speech-to-Text) if audio is uploaded
+  if (file) {
+    userContent = await deepgramService.transcribeAudio(file.buffer, file.mimetype);
+  }
 
-  const aiResponse = {
-    id: `msg_${Date.now()}`,
-    role: "ai",
-    content: "That's a great answer. Let me follow up with another question...",
-    timestamp: new Date().toISOString(),
+  if (!userContent) {
+    throw new AppError(400, "Answer content or audio is required");
+  }
+
+  // 2. Fetch Interview and Resume
+  const interview = await prisma.interview.findUnique({
+    where: { id },
+    include: { resume: true, messages: { orderBy: { createdAt: "asc" } } },
+  });
+
+  if (!interview) {
+    throw new AppError(404, "Interview not found");
+  }
+
+  // 3. Save User Message
+  await prisma.message.create({
+    data: {
+      interviewId: id,
+      role: "USER",
+      content: userContent,
+    },
+  });
+
+  // 4. Prepare History for AI
+  const history = interview.messages.map((m: any) => ({
+    role: m.role === "USER" ? "user" : "ai",
+    content: m.content,
+  })) as { role: "user" | "ai"; content: string }[];
+  history.push({ role: "user", content: userContent }); // include the latest
+
+  // 5. AI Generates Next Question
+  const context = {
+    company: interview.company,
+    role: interview.role,
+    experienceLevel: interview.experience,
+    mode: interview.mode,
   };
+  const resumeText = interview.resume?.parsedText || null;
+  const aiResponseText = await aiService.generateNextQuestion(context, resumeText, history);
 
-  res.json({ success: true, data: aiResponse });
+  // 6. Save AI Message
+  const aiMessage = await prisma.message.create({
+    data: {
+      interviewId: id,
+      role: "AI",
+      content: aiResponseText,
+    },
+  });
+
+  // 7. TTS (Text-to-Speech) if Voice Mode
+  let audioBase64 = null;
+  if (interview.mode === "VOICE" || file) {
+    const audioBuffer = await deepgramService.generateSpeech(aiResponseText);
+    audioBase64 = audioBuffer.toString("base64");
+  }
+
+  res.json({
+    success: true,
+    data: {
+      userContent, // Return transcribed text so frontend can display it
+      aiMessage: {
+        id: aiMessage.id,
+        role: "ai",
+        content: aiMessage.content,
+        timestamp: aiMessage.createdAt.toISOString(),
+      },
+      audio: audioBase64,
+    },
+  });
 });
 
 /**
@@ -77,7 +163,7 @@ export const submitAnswer = asyncHandler(async (req: Request, res: Response) => 
  * Ends the interview and queues the evaluation job.
  */
 export const endInterview = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   // TODO: Update interview status to "evaluating"
   // TODO: Queue evaluation job via BullMQ
@@ -95,7 +181,7 @@ export const endInterview = asyncHandler(async (req: Request, res: Response) => 
  * Returns the evaluated scorecard and feedback.
  */
 export const getResults = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   // TODO: Fetch evaluation results from database
   // TODO: Return 202 if still processing

@@ -1,126 +1,59 @@
 import Groq from "groq-sdk";
 import config from "../config";
+import { AppError } from "../middlewares/error-handler";
 
 const groq = new Groq({
-  apiKey: config.groq.apiKey,
+  apiKey: config.groq.apiKey || process.env.GROQ_API_KEY || "",
 });
 
-/**
- * Generates a contextual interview question using Groq LLM.
- */
-export async function generateInterviewQuestion(params: {
-  company: string;
-  role: string;
-  experience: string;
-  previousMessages: { role: string; content: string }[];
-  questionIndex: number;
-}) {
-  const systemPrompt = `You are a senior interviewer at ${params.company} conducting a mock interview for a ${params.experience} ${params.role} position.
+const SYSTEM_PROMPT = `You are an expert AI Interviewer. You are conducting a highly realistic job interview.
+You will be provided with:
+- The candidate's target company, role, and experience level.
+- The candidate's parsed resume.
+- The interview chat history so far.
 
-Rules:
-- Ask one question at a time.
-- Start with behavioral, move to technical, then system design.
-- Adjust difficulty based on the candidate's experience level.
-- Be encouraging but professional.
-- This is question ${params.questionIndex + 1} of the interview.`;
+Your job is to generate the NEXT response as the interviewer.
+- If it's the beginning of the interview, greet them and ask the first question.
+- If they answered a question, evaluate their answer briefly and naturally, then ask the next question or a follow-up.
+- Keep your responses concise and conversational (like a real spoken interview). Do not output long lists or markdown formatting because your text will be converted to speech.
+- Act professional but friendly.`;
 
-  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: systemPrompt },
-    ...params.previousMessages.map((m) => ({
-      role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
-      content: m.content,
-    })),
+export const generateNextQuestion = async (
+  context: { company: string; role: string; experienceLevel: string; mode: string },
+  resumeText: string | null,
+  history: { role: "user" | "ai"; content: string }[]
+): Promise<string> => {
+  if (!config.groq.apiKey && !process.env.GROQ_API_KEY) {
+    throw new AppError(500, "Groq API key is missing");
+  }
+
+  const messages: any[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: `Context: Target Company: ${context.company}, Role: ${context.role}, Experience: ${context.experienceLevel}. Mode: ${context.mode}.
+${resumeText ? `Candidate Resume: ${resumeText}` : "No resume provided."}`
+    }
   ];
 
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages,
-    temperature: 0.7,
-    max_tokens: 500,
+  history.forEach(msg => {
+    messages.push({
+      role: msg.role === "ai" ? "assistant" : "user",
+      content: msg.content
+    });
   });
 
-  return completion.choices[0]?.message?.content || "Could not generate question.";
-}
+  try {
+    const chatCompletion = await groq.chat.completions.create({
+      messages,
+      model: "llama-3.3-70b-versatile",
+      temperature: 0.7,
+      max_tokens: 250,
+    });
 
-/**
- * Evaluates a candidate's answer and returns structured feedback.
- */
-export async function evaluateAnswer(params: {
-  company: string;
-  role: string;
-  question: string;
-  answer: string;
-}) {
-  const systemPrompt = `You are evaluating a candidate's answer for a ${params.role} position at ${params.company}.
-
-Evaluate the answer and respond ONLY in this JSON format:
-{
-  "score": <number 0-100>,
-  "feedback": "<detailed feedback>",
-  "strengths": ["<strength1>", "<strength2>"],
-  "weaknesses": ["<weakness1>"],
-  "followUp": "<optional follow-up question>"
-}`;
-
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: `Question: ${params.question}\n\nAnswer: ${params.answer}` },
-    ],
-    temperature: 0.3,
-    max_tokens: 800,
-    response_format: { type: "json_object" },
-  });
-
-  const raw = completion.choices[0]?.message?.content || "{}";
-  return JSON.parse(raw);
-}
-
-/**
- * Generates a comprehensive feedback report for the entire interview.
- */
-export async function generateFeedbackReport(params: {
-  company: string;
-  role: string;
-  experience: string;
-  questionsAndAnswers: { question: string; answer: string }[];
-}) {
-  const qaText = params.questionsAndAnswers
-    .map((qa, i) => `Q${i + 1}: ${qa.question}\nA${i + 1}: ${qa.answer}`)
-    .join("\n\n");
-
-  const systemPrompt = `You are generating a comprehensive interview performance report for a ${params.experience} ${params.role} candidate at ${params.company}.
-
-Analyze all questions and answers below, then respond ONLY in this JSON format:
-{
-  "overallScore": <number 0-100>,
-  "strengths": ["<strength1>", "<strength2>", "<strength3>"],
-  "weaknesses": ["<weakness1>", "<weakness2>", "<weakness3>"],
-  "categories": [
-    {"name": "Technical Accuracy", "score": <number>},
-    {"name": "Communication", "score": <number>},
-    {"name": "Problem Solving", "score": <number>},
-    {"name": "System Design", "score": <number>},
-    {"name": "Code Quality", "score": <number>}
-  ],
-  "questionFeedback": [
-    {"questionIndex": 1, "score": <number>, "feedback": "<feedback>"}
-  ],
-  "recommendation": "<final recommendation paragraph>"
-}`;
-
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: qaText },
-    ],
-    temperature: 0.3,
-    max_tokens: 2000,
-    response_format: { type: "json_object" },
-  });
-
-  const raw = completion.choices[0]?.message?.content || "{}";
-  return JSON.parse(raw);
-}
+    return chatCompletion.choices[0]?.message?.content || "Could you tell me more about that?";
+  } catch (error) {
+    console.error("Groq AI Error:", error);
+    throw new AppError(500, "Failed to generate AI response");
+  }
+};

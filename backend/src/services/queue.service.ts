@@ -3,20 +3,17 @@ import IORedis from "ioredis";
 import config from "../config";
 
 // ─── Redis Connection (shared by all queues) ───
-const connection = new IORedis({
-  host: config.redis.host,
-  port: config.redis.port,
-  password: config.redis.password,
+const connection = new IORedis(config.redisUrl, {
   maxRetriesPerRequest: null, // Required by BullMQ
 });
 
 // ─── Queue Definitions ───
 
 /** Queue for generating interview feedback reports (heavy AI task) */
-export const evaluationQueue = new Queue("evaluation", { connection });
+export const evaluationQueue = new Queue("evaluation", { connection: connection as any });
 
 /** Queue for parsing uploaded resumes */
-export const resumeParsingQueue = new Queue("resume-parsing", { connection });
+export const resumeParsingQueue = new Queue("resume-parsing", { connection: connection as any });
 
 // ─── Worker Definitions ───
 
@@ -39,7 +36,7 @@ export const evaluationWorker = new Worker(
     console.log(`✅ Evaluation complete for interview: ${interviewId}`);
     return { interviewId, status: "completed" };
   },
-  { connection, concurrency: 3 }
+  { connection: connection as any, concurrency: 3 }
 );
 
 /**
@@ -60,7 +57,7 @@ export const resumeParsingWorker = new Worker(
     console.log(`✅ Resume parsed: ${resumeId}`);
     return { resumeId, status: "parsed" };
   },
-  { connection, concurrency: 2 }
+  { connection: connection as any, concurrency: 2 }
 );
 
 // ─── Error Handlers ───

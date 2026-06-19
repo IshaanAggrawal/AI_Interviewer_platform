@@ -13,11 +13,14 @@ import {
   PhoneOff,
   Clock,
   SkipForward,
-  Volume2,
   BrainCircuit,
   User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useApiClient } from "@/lib/api";
+import { useAuth } from "@clerk/nextjs";
+import { useAudioRecorder } from "@/hooks/useAudioRecorder";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 
 // Mock AI messages for demo
 const mockAIQuestions = [
@@ -33,14 +36,12 @@ function formatTime(seconds: number) {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function InterviewRoomPage() {
+export default function InterviewRoomPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const {
     config,
     messages,
     addMessage,
-    isRecording,
-    setIsRecording,
     isAiSpeaking,
     setIsAiSpeaking,
     elapsedSeconds,
@@ -54,6 +55,12 @@ export default function InterviewRoomPage() {
   const [isAiTyping, setIsAiTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const mode = config.mode || "text";
+
+  const { getToken } = useAuth();
+  const api = useApiClient(getToken);
+
+  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
+  const { playBase64Audio, stopAudio } = useAudioPlayer();
 
   // Timer
   useEffect(() => {
@@ -85,54 +92,74 @@ export default function InterviewRoomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputText.trim()) return;
-    addMessage({ role: "user", content: inputText.trim() });
+    const userMsg = inputText.trim();
+    addMessage({ role: "user", content: userMsg });
     setInputText("");
 
-    // Simulate AI response
     setIsAiTyping(true);
     setIsAiSpeaking(true);
-    const nextQ =
-      mockAIQuestions[currentQuestionIndex] ||
-      "That was the final question. Great job! Let me generate your scorecard now.";
-    setTimeout(() => {
-      addMessage({ role: "ai", content: nextQ });
+    try {
+      const res = await api.post(`/api/interviews/${params.id}/message`, { content: userMsg });
+      const { aiMessage, audio } = res.data.data;
+      addMessage({ role: "ai", content: aiMessage.content });
       setIsAiTyping(false);
+      
+      if (audio) {
+        await playBase64Audio(audio);
+      }
       setIsAiSpeaking(false);
       setCurrentQuestionIndex(currentQuestionIndex + 1);
-    }, 2500);
+    } catch (e) {
+      console.error(e);
+      setIsAiTyping(false);
+      setIsAiSpeaking(false);
+    }
   };
 
-  const handleEndInterview = () => {
-    router.push("/interviews/mock-session-1/results");
+  const handleEndInterview = async () => {
+    try {
+      await api.post(`/api/interviews/${params.id}/end`);
+      router.push(`/interviews/${params.id}/results`);
+    } catch (error) {
+      console.error("Failed to end interview:", error);
+    }
   };
 
-  const toggleRecording = () => {
-    setIsRecording(!isRecording);
+  const toggleRecording = async () => {
     if (!isRecording) {
-      // Simulate voice input
-      setTimeout(() => {
-        addMessage({
-          role: "user",
-          content:
-            "I would design the system using a pub-sub architecture with Redis as the message broker...",
-        });
-        setIsRecording(false);
-
-        // AI responds
+      await startRecording();
+    } else {
+      const audioBlob = await stopRecording();
+      if (audioBlob) {
         setIsAiTyping(true);
         setIsAiSpeaking(true);
-        const nextQ =
-          mockAIQuestions[currentQuestionIndex] ||
-          "That concludes our interview. Let me prepare your scorecard.";
-        setTimeout(() => {
-          addMessage({ role: "ai", content: nextQ });
+        
+        try {
+          const formData = new FormData();
+          formData.append("audio", audioBlob, "recording.webm");
+          
+          const res = await api.post(`/api/interviews/${params.id}/message`, formData, {
+            headers: { "Content-Type": "multipart/form-data" }
+          });
+          const { userContent, aiMessage, audio } = res.data.data;
+          
+          addMessage({ role: "user", content: userContent });
+          addMessage({ role: "ai", content: aiMessage.content });
           setIsAiTyping(false);
+          
+          if (audio) {
+            await playBase64Audio(audio);
+          }
           setIsAiSpeaking(false);
           setCurrentQuestionIndex(currentQuestionIndex + 1);
-        }, 2500);
-      }, 3000);
+        } catch (e) {
+          console.error(e);
+          setIsAiTyping(false);
+          setIsAiSpeaking(false);
+        }
+      }
     }
   };
 
