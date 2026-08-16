@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "../middlewares/async-handler";
+import { generateNextQuestion, evaluateSingleAnswer, generateFeedbackReport } from "../services/ai.service";
+import prisma from "../lib/prisma";
 
 /**
  * POST /api/ai/generate-question
@@ -8,14 +10,16 @@ import { asyncHandler } from "../middlewares/async-handler";
 export const generateQuestion = asyncHandler(async (req: Request, res: Response) => {
   const { company, role, experience, previousMessages, questionIndex } = req.body;
 
-  // TODO: Build system prompt based on company/role/experience
-  // TODO: Call Groq API with conversation history
-  // TODO: Return generated question
+  const question = await generateNextQuestion(
+    { company, role, experienceLevel: experience, mode: 'TEXT' },
+    null,
+    previousMessages || []
+  );
 
   res.json({
     success: true,
     data: {
-      question: "Can you explain how you would design a URL shortener?",
+      question,
       questionIndex: questionIndex + 1,
     },
   });
@@ -28,15 +32,14 @@ export const generateQuestion = asyncHandler(async (req: Request, res: Response)
 export const evaluateAnswer = asyncHandler(async (req: Request, res: Response) => {
   const { question, answer, company, role } = req.body;
 
-  // TODO: Call Groq with evaluation prompt
-  // TODO: Parse structured response (score, feedback)
+  const evaluation = await evaluateSingleAnswer(company, role, question, answer);
 
   res.json({
     success: true,
     data: {
-      score: 85,
-      feedback: "Good answer with solid technical depth...",
-      followUp: "How would you handle cache invalidation in this system?",
+      score: evaluation.score,
+      feedback: evaluation.feedback,
+      followUp: evaluation.followUp,
     },
   });
 });
@@ -49,18 +52,73 @@ export const evaluateAnswer = asyncHandler(async (req: Request, res: Response) =
 export const generateFeedback = asyncHandler(async (req: Request, res: Response) => {
   const { interviewId } = req.body;
 
-  // TODO: Fetch all Q&A pairs from the database
-  // TODO: Call Groq to generate comprehensive feedback
-  // TODO: Save evaluation results to database
+  const interview = await prisma.interview.findUnique({
+    where: { id: interviewId },
+    include: { messages: true, resume: true }
+  });
+
+  if (!interview) {
+    return res.status(404).json({ success: false, message: "Interview not found" });
+  }
+
+  const context = {
+    company: interview.company,
+    role: interview.role,
+    experienceLevel: interview.experience,
+    mode: interview.mode
+  };
+
+  const history: { role: "user" | "ai", content: string }[] = interview.messages.map((m: any) => ({
+    role: m.role === 'USER' ? 'user' : 'ai',
+    content: m.content
+  }));
+
+  const report = await generateFeedbackReport(context, interview.resume?.parsedText || null, history);
+
+  // Save evaluation results to database
+  const evaluation = await prisma.evaluation.create({
+    data: {
+      interviewId,
+      overallScore: report.overallScore,
+      strengths: report.strengths,
+      weaknesses: report.weaknesses,
+      recommendation: report.recommendation,
+      categories: {
+        create: report.categories.map((c: any) => ({
+          name: c.name,
+          score: c.score
+        }))
+      }
+    }
+  });
+
+  // Optionally update message scores if `questionsFeedback` is provided by Groq
+  if (report.questionsFeedback) {
+    for (const qf of report.questionsFeedback) {
+      const msg = interview.messages.find((m: any) => m.role === 'USER' && m.content === qf.userAnswer);
+      if (msg) {
+        await prisma.message.update({
+          where: { id: msg.id },
+          data: { score: qf.score, feedback: qf.feedback }
+        });
+      }
+    }
+  }
+
+  // Update interview overall score
+  await prisma.interview.update({
+    where: { id: interviewId },
+    data: { overallScore: report.overallScore, status: "COMPLETED" }
+  });
 
   res.json({
     success: true,
     data: {
       interviewId,
-      overallScore: 85,
-      strengths: [],
-      weaknesses: [],
-      categories: [],
+      overallScore: report.overallScore,
+      strengths: report.strengths,
+      weaknesses: report.weaknesses,
+      categories: report.categories,
     },
   });
 });

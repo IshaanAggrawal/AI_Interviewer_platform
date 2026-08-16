@@ -41,7 +41,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
   let topSkill = "N/A";
 
   if (totalInterviews > 0) {
-    const totalScore = interviews.reduce((acc, curr) => acc + (curr.overallScore || 0), 0);
+    const totalScore = interviews.reduce((acc: any, curr: any) => acc + (curr.overallScore || 0), 0);
     averageScore = Math.round(totalScore / totalInterviews);
 
     // Calculate top skill
@@ -69,7 +69,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
   const scoreData = interviews
     .slice(0, 7)
     .reverse() // chronologically left-to-right
-    .map((inv, idx) => ({
+    .map((inv: any, idx: any) => ({
       name: `Int ${idx + 1}`,
       score: inv.overallScore || 0,
     }));

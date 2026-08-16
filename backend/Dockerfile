@@ -45,6 +45,10 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
+# Copy Prisma schema (needed for db push at startup)
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+
 # Copy built JavaScript files
 COPY --from=builder /app/dist ./dist
 
@@ -57,4 +61,4 @@ USER expressjs
 EXPOSE 8000
 
 # Start the server
-CMD ["node", "dist/server.js"]
+CMD ["sh", "-c", "npx prisma db push --schema=./prisma/schema.prisma && node dist/server.js"]

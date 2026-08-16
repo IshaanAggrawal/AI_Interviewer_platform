@@ -47,7 +47,7 @@ export const evaluationWorker = new Worker(
       throw new Error("Interview not found");
     }
 
-    const history = interview.messages.map((m) => ({
+    const history = interview.messages.map((m: any) => ({
       role: m.role === "USER" ? "user" : "ai",
       content: m.content,
     })) as { role: "user" | "ai"; content: string }[];
@@ -100,13 +100,13 @@ export const evaluationWorker = new Worker(
 
     // Update per-message feedback
     if (report.questionsFeedback && Array.isArray(report.questionsFeedback)) {
-      const userMessages = interview.messages.filter(m => m.role === "USER");
-      
+      const userMessages = interview.messages.filter((m: any) => m.role === "USER");
+
       for (let i = 0; i < report.questionsFeedback.length; i++) {
         const feedbackItem = report.questionsFeedback[i];
         // Try exact match first
-        let matchedMsg = userMessages.find(m => m.content.trim() === feedbackItem.userAnswer?.trim());
-        
+        let matchedMsg = userMessages.find((m: any) => m.content.trim() === feedbackItem.userAnswer?.trim());
+
         // Fallback to sequential matching if lengths align
         if (!matchedMsg && userMessages.length === report.questionsFeedback.length) {
           matchedMsg = userMessages[i];

@@ -105,6 +105,44 @@ ${resumeText ? `Candidate Resume: ${resumeText}` : "No resume provided."}`
   }
 };
 
+export const evaluateSingleAnswer = async (
+  company: string,
+  role: string,
+  question: string,
+  answer: string
+) => {
+  if (!config.groq.apiKey && !process.env.GROQ_API_KEY) {
+    throw new AppError(500, "Groq API key is missing");
+  }
+
+  const prompt = `You are an expert technical interviewer.
+Evaluate the candidate's answer to the following question.
+Company: ${company}
+Role: ${role}
+Question: ${question}
+Answer: ${answer}
+
+Return a valid JSON object with:
+- score: number (0-100)
+- feedback: string (1-2 sentences of feedback)
+- followUp: string (a natural follow-up question)`;
+
+  try {
+    const chatCompletion = await groq.chat.completions.create({
+      messages: [{ role: "system", content: prompt }],
+      model: "llama-3.3-70b-versatile",
+      temperature: 0.2,
+      response_format: { type: "json_object" }
+    });
+
+    const responseContent = chatCompletion.choices[0]?.message?.content || "{}";
+    return JSON.parse(responseContent);
+  } catch (error) {
+    console.error("Groq AI Single Evaluation Error:", error);
+    throw new AppError(500, "Failed to evaluate answer");
+  }
+};
+
 export const generateFeedbackReport = async (
   context: { company: string; role: string; experienceLevel: string; mode: string },
   resumeText: string | null,
